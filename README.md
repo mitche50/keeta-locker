@@ -7,10 +7,11 @@ LPLocker is a robust, production-ready smart contract system for securely lockin
 - **90-Day Withdrawal Window:** Lock LP tokens, then trigger a 90-day window during which withdrawals are allowed.
 - **Aerodrome LP Compatibility:** Native support for Aerodrome V2 LPs, including fee claiming via `claimFees()` and reporting claimable rewards.
 - **Extensible Rewards:** Register and manage multiple reward sources (e.g., gauges, bribes) via a generic interface.
-- **Customizable Fee Receiver:** Direct all claimed fees to a designated address.
+- **Customizable Fee Receiver:** Direct all claimed fees to a designated address. Fee receiver cannot be set to the zero address.
 - **Comprehensive View Functions:** Monitor lock state, balances, unlock times, and all claimable rewards.
-- **Security:** Uses OpenZeppelin SafeERC20, strict access control, and robust error handling.
-- **Full Test Coverage:** Thorough Foundry test suite with fuzzing and edge case coverage.
+- **Security:** Uses OpenZeppelin SafeERC20, strict access control, robust error handling, and custom errors for zero address checks. Owner renounce is not possible.
+- **Full Test Coverage:** Thorough Foundry test suite with fuzzing, edge case, and adversarial coverage.
+- **MIT Licensed:** See the LICENSE file for details.
 
 ## Contract Structure
 - `src/LPLocker.sol`: Main LPLocker contract
@@ -39,16 +40,18 @@ forge fmt
 ```
 
 ## How It Works
-- **Locking:** Only the owner can lock LP tokens. Once locked, tokens are held until the owner triggers the withdrawal window.
+- **Locking:** Only the owner can lock LP tokens. Once locked, tokens are held until the owner triggers the withdrawal window. Owner cannot be set to the zero address.
 - **Withdrawal:** The owner can trigger a 90-day withdrawal window at any time. During this window, partial or full withdrawal is allowed.
-- **Fee Claiming:** Owner can claim Aerodrome LP fees at any time while locked. Claimed tokens are sent to the fee receiver.
+- **Fee Claiming:** Owner can claim Aerodrome LP fees at any time while locked. Claimed tokens are sent to the fee receiver, which cannot be set to the zero address.
 - **Reward Sources:** Owner can add/remove arbitrary reward sources implementing the `IRewardSource` interface. All claimable rewards can be queried and claimed in batch.
 
 ## Security Notes
 - Uses OpenZeppelin SafeERC20 for all transfers.
 - All state-changing functions are owner-only.
+- Custom errors prevent owner or fee receiver from being set to the zero address.
+- Owner renounce is not possible (cannot set owner to address(0)).
 - (Optional) Add Aerodrome LP validation for extra safety.
-- Full test suite with fuzzing and edge case coverage.
+- Full test suite with fuzzing, edge case, and adversarial coverage.
 
 ## Contributing & Testing
 - Fork and clone the repo
@@ -58,4 +61,4 @@ forge fmt
 - PRs and issues welcome!
 
 ## License
-MIT
+MIT — see [LICENSE](./LICENSE)
