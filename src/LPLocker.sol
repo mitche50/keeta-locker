@@ -31,6 +31,8 @@ contract LPLocker is ILPLocker {
     bool public isWithdrawalTriggered;
     /// @notice List of registered reward sources (e.g. gauges, bribes)
     address[] public rewardSources;
+    /// @notice The delay for the withdrawal window
+    uint256 public constant WITHDRAW_DELAY = 30 days;
 
     constructor(address tokenContract_, address feeReceiver_) {
         tokenContract = tokenContract_;
@@ -132,7 +134,7 @@ contract LPLocker is ILPLocker {
         if (lockUpEndTime != 0) {
             revert WithdrawalAlreadyTriggered();
         }
-        lockUpEndTime = block.timestamp + 90 days;
+        lockUpEndTime = block.timestamp + WITHDRAW_DELAY;
         isWithdrawalTriggered = true;
         emit WithdrawalTriggered(lockUpEndTime);
     }
