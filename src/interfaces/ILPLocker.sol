@@ -118,15 +118,18 @@ interface ILPLocker {
      * @return isLiquidityLocked_ True if liquidity is currently locked
      * @return isWithdrawalTriggered_ True if withdrawal has been triggered
      */
-    function getLockInfo() external view returns (
-        address owner_,
-        address feeReceiver_,
-        address tokenContract_,
-        uint256 lockedAmount_,
-        uint256 lockUpEndTime_,
-        bool isLiquidityLocked_,
-        bool isWithdrawalTriggered_
-    );
+    function getLockInfo()
+        external
+        view
+        returns (
+            address owner_,
+            address feeReceiver_,
+            address tokenContract_,
+            uint256 lockedAmount_,
+            uint256 lockUpEndTime_,
+            bool isLiquidityLocked_,
+            bool isWithdrawalTriggered_
+        );
 
     /**
      * @notice Returns the current LP token balance held by the contract
@@ -148,12 +151,10 @@ interface ILPLocker {
      * @return token1 The address of token1 in the LP
      * @return amount1 The amount of token1 claimable
      */
-    function getClaimableFees() external view returns (
-        address token0,
-        uint256 amount0,
-        address token1,
-        uint256 amount1
-    );
+    function getClaimableFees()
+        external
+        view
+        returns (address token0, uint256 amount0, address token1, uint256 amount1);
 
     /**
      * @notice Adds a new reward source contract
@@ -195,9 +196,8 @@ interface ILPLocker {
      * @return tokens The list of reward token arrays per source
      * @return amounts The list of reward amount arrays per source
      */
-    function getAllClaimableRewards() external view returns (
-        address[] memory sources,
-        address[][] memory tokens,
-        uint256[][] memory amounts
-    );
-} 
+    function getAllClaimableRewards()
+        external
+        view
+        returns (address[] memory sources, address[][] memory tokens, uint256[][] memory amounts);
+}

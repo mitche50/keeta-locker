@@ -91,7 +91,6 @@ contract LPLockerMockTest is Test {
         vm.stopPrank();
     }
 
-
     function testOnlyOwnerCanLock() public {
         vm.startPrank(address(0xBAD));
         lp.mint(address(0xBAD), 5);
@@ -287,4 +286,4 @@ contract LPLockerMockTest is Test {
         assertEq(locker.feeReceiver(), newFeeReceiver);
         vm.stopPrank();
     }
-} 
+}

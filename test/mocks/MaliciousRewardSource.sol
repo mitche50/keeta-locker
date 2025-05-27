@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import { IRewardSource } from "src/interfaces/IRewardSource.sol";
+import {IRewardSource} from "src/interfaces/IRewardSource.sol";
 
 contract MaliciousRewardSource is IRewardSource {
     bool public shouldRevert;
@@ -17,12 +17,15 @@ contract MaliciousRewardSource is IRewardSource {
         shouldReenter = _reenter;
         locker = _locker;
     }
+
     function setRewardTokens(address[] calldata tokens) external {
         _rewardTokens = tokens;
     }
+
     function claimable(address, address) external pure override returns (uint256) {
         return 1e18;
     }
+
     function claim(address) external override {
         if (shouldRevert) revert("MaliciousRewardSource: revert");
         if (shouldGasBomb) {
@@ -38,7 +41,8 @@ contract MaliciousRewardSource is IRewardSource {
             require(success, "Reentrancy failed");
         }
     }
+
     function rewardTokens() external view override returns (address[] memory) {
         return _rewardTokens;
     }
-} 
+}

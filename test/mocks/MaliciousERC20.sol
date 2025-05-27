@@ -18,13 +18,16 @@ contract MaliciousERC20 {
         shouldReenter = _reenter;
         locker = _locker;
     }
+
     function mint(address to, uint256 amount) public {
         balanceOf[to] += amount;
     }
+
     function approve(address spender, uint256 amount) public returns (bool) {
         allowance[msg.sender][spender] = amount;
         return true;
     }
+
     function transferFrom(address from, address to, uint256 amount) public returns (bool) {
         if (shouldRevert) revert("MaliciousERC20: revert");
         if (shouldReturnFalse) return false;
@@ -40,4 +43,4 @@ contract MaliciousERC20 {
         balanceOf[to] += amount;
         return true;
     }
-} 
+}

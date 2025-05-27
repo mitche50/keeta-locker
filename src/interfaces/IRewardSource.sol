@@ -6,4 +6,4 @@ interface IRewardSource {
     function claimable(address user, address token) external view returns (uint256);
     function claim(address user) external;
     function rewardTokens() external view returns (address[] memory);
-} 
+}

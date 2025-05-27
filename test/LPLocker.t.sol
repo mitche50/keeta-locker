@@ -45,6 +45,7 @@ contract LPLockerTest is Test {
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
         locker.lockLiquidity(LOCK_AMOUNT);
     }
+
     function testCannotLockTwice() public {
         lpToken.mint(owner, LOCK_AMOUNT);
         vm.prank(owner);
@@ -55,11 +56,13 @@ contract LPLockerTest is Test {
         vm.expectRevert(ILPLocker.LPAlreadyLocked.selector);
         locker.lockLiquidity(LOCK_AMOUNT);
     }
+
     function testCannotLockZeroAmount() public {
         vm.prank(owner);
         vm.expectRevert(ILPLocker.LPAmountZero.selector);
         locker.lockLiquidity(0);
     }
+
     function testEmitsLiquidityLocked() public {
         lpToken.mint(owner, LOCK_AMOUNT);
         vm.prank(owner);
@@ -76,12 +79,14 @@ contract LPLockerTest is Test {
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
         locker.triggerWithdrawal();
     }
+
     function testCannotTriggerIfNotLocked() public {
         vm.warp(block.timestamp + 2 * 365 days + 1);
         vm.prank(owner);
         vm.expectRevert(ILPLocker.LPNotLocked.selector);
         locker.triggerWithdrawal();
     }
+
     function testCannotTriggerIfAlreadyTriggered() public {
         _lock();
         vm.warp(block.timestamp + 2 * 365 days + 1);
@@ -91,6 +96,7 @@ contract LPLockerTest is Test {
         vm.expectRevert(ILPLocker.WithdrawalAlreadyTriggered.selector);
         locker.triggerWithdrawal();
     }
+
     function testEmitsWithdrawalTriggered() public {
         _lock();
         vm.warp(block.timestamp + 2 * 365 days + 1);
@@ -107,17 +113,20 @@ contract LPLockerTest is Test {
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
         locker.cancelWithdrawalTrigger();
     }
+
     function testCannotCancelIfNotLocked() public {
         vm.prank(owner);
         vm.expectRevert(ILPLocker.LPNotLocked.selector);
         locker.cancelWithdrawalTrigger();
     }
+
     function testCannotCancelIfNotTriggered() public {
         _lock();
         vm.prank(owner);
         vm.expectRevert(ILPLocker.WithdrawalNotTriggered.selector);
         locker.cancelWithdrawalTrigger();
     }
+
     function testEmitsWithdrawalCancelled() public {
         _lockAndTrigger();
         vm.expectEmit(true, false, false, true);
@@ -133,17 +142,20 @@ contract LPLockerTest is Test {
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
         locker.withdrawLP(LOCK_AMOUNT);
     }
+
     function testCannotWithdrawIfNotLocked() public {
         vm.prank(owner);
         vm.expectRevert(ILPLocker.LPNotLocked.selector);
         locker.withdrawLP(LOCK_AMOUNT);
     }
+
     function testCannotWithdrawIfNotTriggered() public {
         _lock();
         vm.prank(owner);
         vm.expectRevert(ILPLocker.WithdrawalNotTriggered.selector);
         locker.withdrawLP(LOCK_AMOUNT);
     }
+
     function testCanWithdrawPartialOrFullAmount() public {
         _lockAndTrigger();
         vm.warp(block.timestamp + 1 days);
@@ -156,6 +168,7 @@ contract LPLockerTest is Test {
         assertEq(locker.lockedAmount(), 0);
         assertEq(locker.isLiquidityLocked(), false);
     }
+
     function testCannotWithdrawAfter90Days() public {
         _lockAndTrigger();
         vm.warp(block.timestamp + 91 days);
@@ -163,6 +176,7 @@ contract LPLockerTest is Test {
         vm.expectRevert(ILPLocker.LockupNotEnded.selector);
         locker.withdrawLP(LOCK_AMOUNT);
     }
+
     function testEmitsLPWithdrawn() public {
         _lockAndTrigger();
         vm.warp(block.timestamp + 1 days);
@@ -171,6 +185,7 @@ contract LPLockerTest is Test {
         vm.prank(owner);
         locker.withdrawLP(LOCK_AMOUNT);
     }
+
     function testResetsStateIfAllWithdrawn() public {
         _lockAndTrigger();
         vm.warp(block.timestamp + 1 days);
@@ -187,29 +202,34 @@ contract LPLockerTest is Test {
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
         locker.changeOwner(user);
     }
+
     function testCannotSetOwnerToZero() public {
         vm.startPrank(owner);
         vm.expectRevert(ILPLocker.OwnerCannotBeZeroAddress.selector);
         locker.changeOwner(address(0));
         vm.stopPrank();
     }
+
     function testEmitsOwnerChanged() public {
         vm.expectEmit(true, false, false, true);
         emit ILPLocker.OwnerChanged(user);
         vm.prank(owner);
         locker.changeOwner(user);
     }
+
     function testOnlyOwnerCanChangeFeeReceiver() public {
         vm.prank(user);
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
         locker.changeFeeReceiver(user);
     }
+
     function testCannotSetFeeReceiverToZero() public {
         vm.startPrank(owner);
         vm.expectRevert(ILPLocker.FeeReceiverCannotBeZeroAddress.selector);
         locker.changeFeeReceiver(address(0));
         vm.stopPrank();
     }
+
     function testEmitsFeeReceiverChanged() public {
         vm.expectEmit(true, false, false, true);
         emit ILPLocker.FeeReceiverChanged(user);
@@ -223,17 +243,20 @@ contract LPLockerTest is Test {
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
         locker.claimLPFees();
     }
+
     function testCannotClaimIfNotLocked() public {
         vm.prank(owner);
         vm.expectRevert(bytes("LP not locked"));
         locker.claimLPFees();
     }
+
     function testCallsClaimFeesOnPool() public {
         _lock();
         lpToken.setClaimAmounts(123, 456);
         vm.prank(owner);
         locker.claimLPFees();
     }
+
     function testTransfersAllToken0AndToken1ToFeeReceiver() public {
         _lock();
         token0.mint(address(locker), 100);
@@ -246,6 +269,7 @@ contract LPLockerTest is Test {
         assertEq(token0.balanceOf(feeReceiver), bal0Before + 100);
         assertEq(token1.balanceOf(feeReceiver), bal1Before + 200);
     }
+
     function testEmitsFeesClaimed() public {
         _lock();
         lpToken.setClaimAmounts(123, 456);
@@ -254,6 +278,7 @@ contract LPLockerTest is Test {
         vm.prank(owner);
         locker.claimLPFees();
     }
+
     function testClaimLPFeesTransfersCorrectAmountsToFeeReceiver() public {
         _lock();
         uint256 claim0 = 123;
@@ -378,7 +403,8 @@ contract LPLockerTest is Test {
         reward.setReward(address(locker), address(token1), 222);
         vm.prank(owner);
         locker.addRewardSource(address(reward));
-        (address[] memory sources, address[][] memory rTokens, uint256[][] memory amounts) = locker.getAllClaimableRewards();
+        (address[] memory sources, address[][] memory rTokens, uint256[][] memory amounts) =
+            locker.getAllClaimableRewards();
         assertEq(sources.length, 1);
         assertEq(sources[0], address(reward));
         assertEq(rTokens[0][0], address(token0));
@@ -419,7 +445,8 @@ contract LPLockerTest is Test {
         locker.addRewardSource(address(reward1));
         vm.prank(owner);
         locker.addRewardSource(address(reward2));
-        (address[] memory sources, address[][] memory rTokens, uint256[][] memory amounts) = locker.getAllClaimableRewards();
+        (address[] memory sources, address[][] memory rTokens, uint256[][] memory amounts) =
+            locker.getAllClaimableRewards();
         assertEq(sources.length, 2);
         assertEq(sources[0], address(reward1));
         assertEq(sources[1], address(reward2));
@@ -494,6 +521,7 @@ contract LPLockerTest is Test {
         vm.expectRevert();
         locker.withdrawLP(LOCK_AMOUNT + 1);
     }
+
     function testCannotWithdrawZeroAmount() public {
         _lockAndTrigger();
         vm.warp(block.timestamp + 1 days);
@@ -502,6 +530,7 @@ contract LPLockerTest is Test {
         locker.withdrawLP(0);
         assertEq(locker.lockedAmount(), before);
     }
+
     function testAddSameRewardSourceTwice() public {
         MockRewardSource reward = new MockRewardSource();
         vm.prank(owner);
@@ -511,6 +540,7 @@ contract LPLockerTest is Test {
         assertEq(locker.rewardSources(0), address(reward));
         assertEq(locker.rewardSources(1), address(reward));
     }
+
     function testRemoveRewardSourceOutOfBounds() public {
         MockRewardSource reward = new MockRewardSource();
         vm.prank(owner);
@@ -521,6 +551,7 @@ contract LPLockerTest is Test {
         vm.expectRevert(bytes("Invalid index"));
         locker.removeRewardSource(0);
     }
+
     function testCanLockAfterFullWithdrawal() public {
         _lockAndTrigger();
         vm.warp(block.timestamp + 1 days);
@@ -534,6 +565,7 @@ contract LPLockerTest is Test {
         assertEq(locker.lockedAmount(), LOCK_AMOUNT);
         assertEq(locker.isLiquidityLocked(), true);
     }
+
     function testStateAfterPartialThenFullWithdrawal() public {
         _lockAndTrigger();
         vm.warp(block.timestamp + 1 days);
@@ -559,6 +591,7 @@ contract LPLockerTest is Test {
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
         locker.topUpLock(topUp);
     }
+
     function testCannotTopUpIfNotLocked() public {
         uint256 topUp = 100 ether;
         lpToken.mint(owner, topUp);
@@ -568,12 +601,14 @@ contract LPLockerTest is Test {
         vm.expectRevert(ILPLocker.LPNotLocked.selector);
         locker.topUpLock(topUp);
     }
+
     function testCannotTopUpZero() public {
         _lock();
         vm.prank(owner);
         vm.expectRevert(ILPLocker.LPAmountZero.selector);
         locker.topUpLock(0);
     }
+
     function testTopUpIncreasesLockedAmount() public {
         _lock();
         uint256 topUp = 123 ether;
@@ -584,6 +619,7 @@ contract LPLockerTest is Test {
         locker.topUpLock(topUp);
         assertEq(locker.lockedAmount(), LOCK_AMOUNT + topUp);
     }
+
     function testTopUpEmitsLiquidityLocked() public {
         _lock();
         uint256 topUp = 42 ether;
@@ -595,6 +631,7 @@ contract LPLockerTest is Test {
         vm.prank(owner);
         locker.topUpLock(topUp);
     }
+
     function testTopUpAfterPartialWithdrawal() public {
         _lockAndTrigger();
         vm.warp(block.timestamp + 1 days);
@@ -608,6 +645,7 @@ contract LPLockerTest is Test {
         locker.topUpLock(topUp);
         assertEq(locker.lockedAmount(), (LOCK_AMOUNT / 2) + topUp);
     }
+
     function testCannotTopUpAfterFullWithdrawal() public {
         _lockAndTrigger();
         vm.warp(block.timestamp + 1 days);
@@ -628,6 +666,7 @@ contract LPLockerTest is Test {
         vm.expectRevert(ILPLocker.RewardSourceDoesNotImplementRequiredInterface.selector);
         locker.addRewardSource(address(bad));
     }
+
     function testBatchClaimRewardsClaimsSelectedSources() public {
         MockRewardSource reward1 = new MockRewardSource();
         MockRewardSource reward2 = new MockRewardSource();
@@ -648,6 +687,7 @@ contract LPLockerTest is Test {
         assertEq(reward1.claimed(), false);
         assertEq(reward2.claimed(), true);
     }
+
     function testBatchClaimRewardsInvalidIndexReverts() public {
         MockRewardSource reward = new MockRewardSource();
         address[] memory tokens = new address[](1);
@@ -662,6 +702,7 @@ contract LPLockerTest is Test {
         vm.expectRevert(bytes("Invalid index"));
         locker.batchClaimRewards(indices);
     }
+
     function testBatchClaimRewardsDuplicateIndices() public {
         MockRewardSource reward = new MockRewardSource();
         address[] memory tokens = new address[](1);
@@ -677,6 +718,7 @@ contract LPLockerTest is Test {
         locker.batchClaimRewards(indices);
         assertEq(reward.claimed(), true);
     }
+
     function testBatchClaimRewardsEmptyArrayNoOp() public {
         MockRewardSource reward = new MockRewardSource();
         address[] memory tokens = new address[](1);
@@ -697,10 +739,11 @@ contract LPLockerTest is Test {
         vm.prank(owner);
         locker.lockLiquidity(LOCK_AMOUNT);
     }
+
     function _lockAndTrigger() internal {
         _lock();
         vm.warp(block.timestamp + 2 * 365 days + 1);
         vm.prank(owner);
         locker.triggerWithdrawal();
     }
-} 
+}

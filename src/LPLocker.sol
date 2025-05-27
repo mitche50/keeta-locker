@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
+
 import "./interfaces/IAerodromePool.sol";
 import "./interfaces/ILPLocker.sol";
 import "./interfaces/IRewardSource.sol";
@@ -31,7 +32,6 @@ contract LPLocker is ILPLocker {
     /// @notice List of registered reward sources (e.g. gauges, bribes)
     address[] public rewardSources;
 
-
     constructor(address tokenContract_, address feeReceiver_) {
         tokenContract = tokenContract_;
         owner = msg.sender;
@@ -41,24 +41,22 @@ contract LPLocker is ILPLocker {
     // ----------- VIEW FUNCTIONS -----------
 
     /// @inheritdoc ILPLocker
-    function getLockInfo() external view override returns (
-        address owner_,
-        address feeReceiver_,
-        address tokenContract_,
-        uint256 lockedAmount_,
-        uint256 lockUpEndTime_,
-        bool isLiquidityLocked_,
-        bool isWithdrawalTriggered_
-    ) {
-        return (
-            owner,
-            feeReceiver,
-            tokenContract,
-            lockedAmount,
-            lockUpEndTime,
-            isLiquidityLocked,
-            isWithdrawalTriggered
-        );
+    function getLockInfo()
+        external
+        view
+        override
+        returns (
+            address owner_,
+            address feeReceiver_,
+            address tokenContract_,
+            uint256 lockedAmount_,
+            uint256 lockUpEndTime_,
+            bool isLiquidityLocked_,
+            bool isWithdrawalTriggered_
+        )
+    {
+        return
+            (owner, feeReceiver, tokenContract, lockedAmount, lockUpEndTime, isLiquidityLocked, isWithdrawalTriggered);
     }
 
     /// @inheritdoc ILPLocker
@@ -72,12 +70,12 @@ contract LPLocker is ILPLocker {
     }
 
     /// @inheritdoc ILPLocker
-    function getClaimableFees() external view override returns (
-        address token0,
-        uint256 amount0,
-        address token1,
-        uint256 amount1
-    ) {
+    function getClaimableFees()
+        external
+        view
+        override
+        returns (address token0, uint256 amount0, address token1, uint256 amount1)
+    {
         IAerodromePool pool = IAerodromePool(tokenContract);
         token0 = pool.token0();
         token1 = pool.token1();
@@ -87,11 +85,11 @@ contract LPLocker is ILPLocker {
     }
 
     /// @inheritdoc ILPLocker
-    function getAllClaimableRewards() external view returns (
-        address[] memory sources,
-        address[][] memory tokens,
-        uint256[][] memory amounts
-    ) {
+    function getAllClaimableRewards()
+        external
+        view
+        returns (address[] memory sources, address[][] memory tokens, uint256[][] memory amounts)
+    {
         uint256 n = rewardSources.length;
         sources = new address[](n);
         tokens = new address[][](n);
@@ -235,8 +233,8 @@ contract LPLocker is ILPLocker {
     /// @inheritdoc ILPLocker
     function addRewardSource(address rewardSource) external {
         _requireIsOwner();
-        try IRewardSource(rewardSource).rewardTokens() returns (address[] memory) {
-        } catch {
+        try IRewardSource(rewardSource).rewardTokens() returns (address[] memory) {}
+        catch {
             revert RewardSourceDoesNotImplementRequiredInterface();
         }
         rewardSources.push(rewardSource);

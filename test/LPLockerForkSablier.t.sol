@@ -70,4 +70,4 @@ contract LPLockerForkSablierTest is Test {
         uint256 balance = ISablierNFT(SABLIER).balanceOf(owner);
         console2.log("balance", balance);
     }
-} 
+}
