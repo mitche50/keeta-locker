@@ -196,6 +196,7 @@ contract LPLockerMockTest is Test {
         lp.approve(address(locker), initial);
         locker.lockLiquidity(initial);
         locker.triggerWithdrawal();
+        vm.warp(locker.lockUpEndTime() + 1);
         locker.withdrawLP(withdrawAmount);
         assertEq(locker.lockedAmount(), initial - withdrawAmount);
         vm.stopPrank();

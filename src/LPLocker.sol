@@ -162,7 +162,7 @@ contract LPLocker is ILPLocker {
         if (lockUpEndTime == 0) {
             revert WithdrawalNotTriggered();
         }
-        if (block.timestamp > lockUpEndTime) {
+        if (block.timestamp < lockUpEndTime) {
             revert LockupNotEnded();
         }
         IERC20(tokenContract).safeTransfer(owner, amount);

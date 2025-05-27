@@ -103,7 +103,7 @@ contract LPLockerTest is Test {
         vm.prank(owner);
         uint256 before = block.timestamp;
         vm.expectEmit(true, false, false, true);
-        emit ILPLocker.WithdrawalTriggered(before + 90 days);
+        emit ILPLocker.WithdrawalTriggered(before + 30 days);
         locker.triggerWithdrawal();
     }
 
@@ -158,7 +158,7 @@ contract LPLockerTest is Test {
 
     function testCanWithdrawPartialOrFullAmount() public {
         _lockAndTrigger();
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(locker.lockUpEndTime() + 1);
         vm.prank(owner);
         locker.withdrawLP(LOCK_AMOUNT / 2);
         assertEq(locker.lockedAmount(), LOCK_AMOUNT / 2);
@@ -169,17 +169,28 @@ contract LPLockerTest is Test {
         assertEq(locker.isLiquidityLocked(), false);
     }
 
-    function testCannotWithdrawAfter90Days() public {
+    function testCannotWithdrawBeforeUnlockTime() public {
         _lockAndTrigger();
-        vm.warp(block.timestamp + 91 days);
+        // Try to withdraw just before unlock time
+        vm.warp(locker.lockUpEndTime() - 1);
         vm.prank(owner);
         vm.expectRevert(ILPLocker.LockupNotEnded.selector);
         locker.withdrawLP(LOCK_AMOUNT);
     }
 
+    function testCanWithdrawAfterUnlockTime() public {
+        _lockAndTrigger();
+        // Warp to just after unlock time
+        vm.warp(locker.lockUpEndTime() + 1);
+        vm.prank(owner);
+        locker.withdrawLP(LOCK_AMOUNT);
+        assertEq(locker.lockedAmount(), 0);
+        assertEq(locker.isLiquidityLocked(), false);
+    }
+
     function testEmitsLPWithdrawn() public {
         _lockAndTrigger();
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(locker.lockUpEndTime() + 1);
         vm.expectEmit(true, false, false, true);
         emit ILPLocker.LPWithdrawn(LOCK_AMOUNT);
         vm.prank(owner);
@@ -188,7 +199,7 @@ contract LPLockerTest is Test {
 
     function testResetsStateIfAllWithdrawn() public {
         _lockAndTrigger();
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(locker.lockUpEndTime() + 1);
         vm.prank(owner);
         locker.withdrawLP(LOCK_AMOUNT);
         assertEq(locker.isLiquidityLocked(), false);
@@ -365,7 +376,7 @@ contract LPLockerTest is Test {
         assertEq(locker.getLPBalance(), LOCK_AMOUNT);
         vm.prank(owner);
         locker.triggerWithdrawal();
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(locker.lockUpEndTime() + 1);
         vm.prank(owner);
         locker.withdrawLP(LOCK_AMOUNT);
         assertEq(locker.getLPBalance(), 0);
@@ -508,7 +519,7 @@ contract LPLockerTest is Test {
         locker.lockLiquidity(lockAmt);
         vm.prank(owner);
         locker.triggerWithdrawal();
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(locker.lockUpEndTime() + 1);
         vm.prank(owner);
         locker.withdrawLP(withdrawAmt);
         assertEq(locker.lockedAmount(), lockAmt - withdrawAmt);
@@ -524,7 +535,7 @@ contract LPLockerTest is Test {
 
     function testCannotWithdrawZeroAmount() public {
         _lockAndTrigger();
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(locker.lockUpEndTime() + 1);
         uint256 before = locker.lockedAmount();
         vm.prank(owner);
         locker.withdrawLP(0);
@@ -554,7 +565,7 @@ contract LPLockerTest is Test {
 
     function testCanLockAfterFullWithdrawal() public {
         _lockAndTrigger();
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(locker.lockUpEndTime() + 1);
         vm.prank(owner);
         locker.withdrawLP(LOCK_AMOUNT);
         lpToken.mint(owner, LOCK_AMOUNT);
@@ -568,7 +579,7 @@ contract LPLockerTest is Test {
 
     function testStateAfterPartialThenFullWithdrawal() public {
         _lockAndTrigger();
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(locker.lockUpEndTime() + 1);
         vm.prank(owner);
         locker.withdrawLP(LOCK_AMOUNT / 2);
         assertEq(locker.lockedAmount(), LOCK_AMOUNT / 2);
@@ -634,7 +645,7 @@ contract LPLockerTest is Test {
 
     function testTopUpAfterPartialWithdrawal() public {
         _lockAndTrigger();
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(locker.lockUpEndTime() + 1);
         vm.prank(owner);
         locker.withdrawLP(LOCK_AMOUNT / 2);
         uint256 topUp = 50 ether;
@@ -648,7 +659,7 @@ contract LPLockerTest is Test {
 
     function testCannotTopUpAfterFullWithdrawal() public {
         _lockAndTrigger();
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(locker.lockUpEndTime() + 1);
         vm.prank(owner);
         locker.withdrawLP(LOCK_AMOUNT);
         uint256 topUp = 10 ether;
