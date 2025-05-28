@@ -1,0 +1,22 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+remappings = ["openzeppelin-contracts/=lib/openzeppelin-contracts/contracts/"]
+fs_permissions = [{ access = "read-write", path = "./deployments" }]
+
+evm_version = "prague"
+
+# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+
+[rpc_endpoints]
+base = "https://base-mainnet.g.alchemy.com/v2/AAafYIOa45uQEW-mIFfBrbsmJLs_eb1z"
+anvil = "http://127.0.0.1:8545"
+
+# Anvil configuration for local development
+[profile.anvil]
+src = "src"
+out = "out"
+libs = ["lib"]
+remappings = ["openzeppelin-contracts/=lib/openzeppelin-contracts/contracts/"]
+fs_permissions = [{ access = "read-write", path = "./deployments" }]

@@ -1,0 +1,26 @@
+{
+    "name": "LPLocker - Aerodrome LP Token Locker",
+    "short_name": "LPLocker",
+    "description": "Secure time-locked liquidity provider token management with fee collection and reward distribution on Base network.",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#0f0f0f",
+    "theme_color": "#1a1a1a",
+    "orientation": "portrait-primary",
+    "icons": [
+        {
+            "src": "/favicon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
+        }
+    ],
+    "categories": [
+        "finance",
+        "productivity",
+        "utilities"
+    ],
+    "lang": "en",
+    "scope": "/",
+    "id": "lpLocker-keeta"
+}

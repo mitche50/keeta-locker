@@ -1,0 +1,39 @@
+# Foundry artifacts
+cache/
+out/
+broadcast/*/31337/
+broadcast/**/dry-run/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+lib/
+
+# Coverage reports
+lcov.info
+*.lcov
+coverage/
+
+# Logs
+*.log
+
+# Deployment artifacts (keep production deployments)
+deployments/31337/
+deployments/localhost/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db 
