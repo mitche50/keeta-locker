@@ -6,7 +6,7 @@ export function useLPLocker() {
     const chainId = useChainId();
     const lpLockerAddress = getContractAddress(chainId, 'lpLocker') as `0x${string}`;
 
-    // Example: getLockInfo
+    // getLockInfo
     const lockInfo = useReadContract({
         address: lpLockerAddress,
         abi: LPLockerABI,
@@ -27,21 +27,10 @@ export function useLPLocker() {
         functionName: "getClaimableFees",
     });
 
-    // getAllClaimableRewards
-    const allClaimableRewards = useReadContract({
-        address: lpLockerAddress,
-        abi: LPLockerABI,
-        functionName: "getAllClaimableRewards",
-    });
-
-    // Add more reads/writes as needed
-
     return {
         lockInfo,
         lpBalance,
         claimableFees,
-        allClaimableRewards,
         contractAddress: lpLockerAddress,
-        // ...other hooks
     };
 } 

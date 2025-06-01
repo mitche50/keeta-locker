@@ -5,7 +5,6 @@ import { getContractAddress, BASE_MAINNET, ANVIL_LOCAL } from "./config";
 import LockInfoPanel from "./components/LockInfoPanel";
 import LPBalancePanel from "./components/LPBalancePanel";
 import ClaimableFeesPanel from "./components/ClaimableFeesPanel";
-import ClaimableRewardsPanel from "./components/ClaimableRewardsPanel";
 import DepositPanel from "./components/DepositPanel";
 import WithdrawalPanel from "./components/WithdrawalPanel";
 
@@ -69,7 +68,6 @@ const App: React.FC = () => {
                         <DepositPanel />
                         <WithdrawalPanel />
                         <ClaimableFeesPanel />
-                        <ClaimableRewardsPanel />
                     </div>
                 </div>
             </main>

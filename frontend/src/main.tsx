@@ -11,7 +11,7 @@ import './index.css';
 
 const config = getDefaultConfig({
     appName: "LPLocker Admin",
-    projectId: "lp-locker-admin", // Use a random string for local dev
+    projectId: "lp-locker-admin",
     chains: [BASE_MAINNET, ANVIL_LOCAL],
     transports: {
         [BASE_MAINNET.id]: http(),
