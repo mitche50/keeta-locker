@@ -7,7 +7,6 @@ import "src/interfaces/ILPLocker.sol";
 import "test/mocks/MockERC20.sol";
 import "test/mocks/MockSablierNFT.sol";
 import "test/mocks/MaliciousERC20.sol";
-import "test/mocks/MaliciousRewardSource.sol";
 
 contract LPLockerMockTest is Test {
     address constant BENEFICIARY = 0xbb767517C6FCbbbB8CeF73769d4034e77A9692A3;
@@ -223,36 +222,6 @@ contract LPLockerMockTest is Test {
         LPLocker evilLocker = new LPLocker(address(evil), BENEFICIARY, FEE_RECEIVER);
         vm.expectRevert();
         evilLocker.lockLiquidity(5);
-        vm.stopPrank();
-    }
-
-    function testMaliciousRewardSourceReentrancyOnClaim() public {
-        MaliciousRewardSource evil = new MaliciousRewardSource();
-        evil.setBehavior(false, false, true, address(locker));
-        address[] memory tokens = new address[](1);
-        tokens[0] = address(lp);
-        evil.setRewardTokens(tokens);
-        vm.startPrank(BENEFICIARY);
-        locker.addRewardSource(address(evil));
-        uint256[] memory indices = new uint256[](1);
-        indices[0] = 0;
-        vm.expectRevert();
-        locker.batchClaimRewards(indices);
-        vm.stopPrank();
-    }
-
-    function testMaliciousRewardSourceRevertOnClaim() public {
-        MaliciousRewardSource evil = new MaliciousRewardSource();
-        evil.setBehavior(true, false, false, address(locker));
-        address[] memory tokens = new address[](1);
-        tokens[0] = address(lp);
-        evil.setRewardTokens(tokens);
-        vm.startPrank(BENEFICIARY);
-        locker.addRewardSource(address(evil));
-        uint256[] memory indices = new uint256[](1);
-        indices[0] = 0;
-        vm.expectRevert(bytes("MaliciousRewardSource: revert"));
-        locker.batchClaimRewards(indices);
         vm.stopPrank();
     }
 

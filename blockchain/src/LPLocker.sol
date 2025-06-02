@@ -3,7 +3,6 @@ pragma solidity ^0.8.24;
 
 import "./interfaces/IAerodromePool.sol";
 import "./interfaces/ILPLocker.sol";
-import "./interfaces/IRewardSource.sol";
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -29,8 +28,7 @@ contract LPLocker is ILPLocker {
     bool public isLiquidityLocked;
     /// @notice True if withdrawal has been triggered
     bool public isWithdrawalTriggered;
-    /// @notice List of registered reward sources (e.g. gauges, bribes)
-    address[] public rewardSources;
+
     /// @notice The delay for the withdrawal window
     uint256 public constant WITHDRAW_DELAY = 30 days;
 
@@ -84,28 +82,6 @@ contract LPLocker is ILPLocker {
         amount0 = pool.claimable0(address(this));
         amount1 = pool.claimable1(address(this));
         return (token0, amount0, token1, amount1);
-    }
-
-    /// @inheritdoc ILPLocker
-    function getAllClaimableRewards()
-        external
-        view
-        returns (address[] memory sources, address[][] memory tokens, uint256[][] memory amounts)
-    {
-        uint256 n = rewardSources.length;
-        sources = new address[](n);
-        tokens = new address[][](n);
-        amounts = new uint256[][](n);
-        for (uint256 i = 0; i < n; ++i) {
-            sources[i] = rewardSources[i];
-            IRewardSource src = IRewardSource(rewardSources[i]);
-            address[] memory rTokens = src.rewardTokens();
-            tokens[i] = rTokens;
-            amounts[i] = new uint256[](rTokens.length);
-            for (uint256 j = 0; j < rTokens.length; ++j) {
-                amounts[i][j] = src.claimable(address(this), rTokens[j]);
-            }
-        }
     }
 
     // ----------- STATE-CHANGING FUNCTIONS -----------
@@ -212,42 +188,6 @@ contract LPLocker is ILPLocker {
             IERC20(token1).safeTransfer(feeReceiver, bal1);
         }
         emit FeesClaimed(token0, amount0, token1, amount1);
-    }
-
-    /// @inheritdoc ILPLocker
-    function batchClaimRewards(uint256[] calldata indices) external {
-        _requireIsOwner();
-        for (uint256 i = 0; i < indices.length; ++i) {
-            uint256 idx = indices[i];
-            require(idx < rewardSources.length, "Invalid index");
-            IRewardSource(rewardSources[idx]).claim(address(this));
-        }
-    }
-
-    /// @inheritdoc ILPLocker
-    function claimAllRewards() external {
-        _requireIsOwner();
-        for (uint256 i = 0; i < rewardSources.length; ++i) {
-            IRewardSource(rewardSources[i]).claim(address(this));
-        }
-    }
-
-    /// @inheritdoc ILPLocker
-    function addRewardSource(address rewardSource) external {
-        _requireIsOwner();
-        try IRewardSource(rewardSource).rewardTokens() returns (address[] memory) {}
-        catch {
-            revert RewardSourceDoesNotImplementRequiredInterface();
-        }
-        rewardSources.push(rewardSource);
-    }
-
-    /// @inheritdoc ILPLocker
-    function removeRewardSource(uint256 index) external {
-        _requireIsOwner();
-        require(index < rewardSources.length, "Invalid index");
-        rewardSources[index] = rewardSources[rewardSources.length - 1];
-        rewardSources.pop();
     }
 
     /// @inheritdoc ILPLocker

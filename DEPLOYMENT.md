@@ -275,7 +275,6 @@ Set up monitoring for:
 - **Lock Events**: New liquidity locks
 - **Withdrawal Events**: Triggered and completed withdrawals
 - **Fee Claims**: Fee collection events
-- **Reward Claims**: Reward distribution events
 - **Owner Changes**: Ownership transfers
 
 ### Frontend Monitoring

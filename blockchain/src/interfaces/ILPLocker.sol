@@ -48,8 +48,6 @@ interface ILPLocker {
     error WithdrawalNotTriggered();
     /// @notice Thrown when attempting to lock zero LP tokens
     error LPAmountZero();
-    /// @notice Thrown when a reward source does not implement the required interface
-    error RewardSourceDoesNotImplementRequiredInterface();
     /// @notice Thrown when attempting to set the owner to the zero address
     error OwnerCannotBeZeroAddress();
     /// @notice Thrown when attempting to set the fee receiver to the zero address
@@ -157,47 +155,9 @@ interface ILPLocker {
         returns (address token0, uint256 amount0, address token1, uint256 amount1);
 
     /**
-     * @notice Adds a new reward source contract
-     * @dev Only callable by the owner. Checks that the contract implements the IRewardSource interface
-     * @param rewardSource The address of the reward source contract
-     */
-    function addRewardSource(address rewardSource) external;
-
-    /**
-     * @notice Removes a reward source contract by index
-     * @dev Only callable by the owner
-     * @param index The index in the rewardSources array
-     */
-    function removeRewardSource(uint256 index) external;
-
-    /**
-     * @notice Claims rewards from a batch of reward sources by index
-     * @dev Only callable by the owner. Each index must be valid.
-     * @param indices The indices of the rewardSources array to claim from
-     */
-    function batchClaimRewards(uint256[] calldata indices) external;
-
-    /**
      * @notice Tops up the locked LP tokens with additional amount
      * @dev Only callable by the owner when liquidity is already locked
      * @param amount The amount of LP tokens to add to the lock
      */
     function topUpLock(uint256 amount) external;
-
-    /**
-     * @notice Claims rewards from all registered reward sources
-     * @dev Only callable by the owner
-     */
-    function claimAllRewards() external;
-
-    /**
-     * @notice Returns all claimable rewards from all registered reward sources
-     * @return sources The list of reward source addresses
-     * @return tokens The list of reward token arrays per source
-     * @return amounts The list of reward amount arrays per source
-     */
-    function getAllClaimableRewards()
-        external
-        view
-        returns (address[] memory sources, address[][] memory tokens, uint256[][] memory amounts);
 }

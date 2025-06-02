@@ -6,8 +6,6 @@ import "../src/LPLocker.sol";
 import "../src/interfaces/ILPLocker.sol";
 import "./mocks/MockERC20.sol";
 import "./mocks/MockAerodromeLP.sol";
-import "./mocks/MockRewardSource.sol";
-import "./mocks/MockNonCompliantRewardSource.sol";
 
 contract LPLockerTest is Test {
     LPLocker locker;
@@ -391,124 +389,6 @@ contract LPLockerTest is Test {
         assertEq(a1, 0);
     }
 
-    function testAddAndRemoveRewardSource() public {
-        MockRewardSource reward = new MockRewardSource();
-        vm.expectRevert();
-        locker.rewardSources(0);
-        vm.prank(owner);
-        locker.addRewardSource(address(reward));
-        assertEq(locker.rewardSources(0), address(reward));
-        vm.prank(owner);
-        locker.removeRewardSource(0);
-        vm.expectRevert();
-        locker.rewardSources(0);
-    }
-
-    function testGetAllClaimableRewards() public {
-        MockRewardSource reward = new MockRewardSource();
-        address[] memory tokens = new address[](2);
-        tokens[0] = address(token0);
-        tokens[1] = address(token1);
-        reward.setRewardTokens(tokens);
-        reward.setReward(address(locker), address(token0), 111);
-        reward.setReward(address(locker), address(token1), 222);
-        vm.prank(owner);
-        locker.addRewardSource(address(reward));
-        (address[] memory sources, address[][] memory rTokens, uint256[][] memory amounts) =
-            locker.getAllClaimableRewards();
-        assertEq(sources.length, 1);
-        assertEq(sources[0], address(reward));
-        assertEq(rTokens[0][0], address(token0));
-        assertEq(rTokens[0][1], address(token1));
-        assertEq(amounts[0][0], 111);
-        assertEq(amounts[0][1], 222);
-    }
-
-    function testClaimAllRewardsCallsClaimOnAllSources() public {
-        MockRewardSource reward = new MockRewardSource();
-        address[] memory tokens = new address[](1);
-        tokens[0] = address(token0);
-        reward.setRewardTokens(tokens);
-        reward.setReward(address(locker), address(token0), 999);
-        vm.prank(owner);
-        locker.addRewardSource(address(reward));
-        assertEq(reward.claimed(), false);
-        vm.prank(owner);
-        locker.claimAllRewards();
-        assertEq(reward.claimed(), true);
-        assertEq(reward.claimable(address(locker), address(token0)), 0);
-    }
-
-    function testMultipleRewardSourcesGetAllClaimableRewards() public {
-        MockRewardSource reward1 = new MockRewardSource();
-        MockRewardSource reward2 = new MockRewardSource();
-        address[] memory tokens1 = new address[](2);
-        tokens1[0] = address(token0);
-        tokens1[1] = address(token1);
-        address[] memory tokens2 = new address[](1);
-        tokens2[0] = address(lpToken);
-        reward1.setRewardTokens(tokens1);
-        reward2.setRewardTokens(tokens2);
-        reward1.setReward(address(locker), address(token0), 111);
-        reward1.setReward(address(locker), address(token1), 222);
-        reward2.setReward(address(locker), address(lpToken), 333);
-        vm.prank(owner);
-        locker.addRewardSource(address(reward1));
-        vm.prank(owner);
-        locker.addRewardSource(address(reward2));
-        (address[] memory sources, address[][] memory rTokens, uint256[][] memory amounts) =
-            locker.getAllClaimableRewards();
-        assertEq(sources.length, 2);
-        assertEq(sources[0], address(reward1));
-        assertEq(sources[1], address(reward2));
-        assertEq(rTokens[0][0], address(token0));
-        assertEq(rTokens[0][1], address(token1));
-        assertEq(rTokens[1][0], address(lpToken));
-        assertEq(amounts[0][0], 111);
-        assertEq(amounts[0][1], 222);
-        assertEq(amounts[1][0], 333);
-    }
-
-    function testMultipleRewardSourcesClaimAllRewards() public {
-        MockRewardSource reward1 = new MockRewardSource();
-        MockRewardSource reward2 = new MockRewardSource();
-        address[] memory tokens1 = new address[](1);
-        tokens1[0] = address(token0);
-        address[] memory tokens2 = new address[](1);
-        tokens2[0] = address(token1);
-        reward1.setRewardTokens(tokens1);
-        reward2.setRewardTokens(tokens2);
-        reward1.setReward(address(locker), address(token0), 100);
-        reward2.setReward(address(locker), address(token1), 200);
-        vm.prank(owner);
-        locker.addRewardSource(address(reward1));
-        vm.prank(owner);
-        locker.addRewardSource(address(reward2));
-        assertEq(reward1.claimed(), false);
-        assertEq(reward2.claimed(), false);
-        vm.prank(owner);
-        locker.claimAllRewards();
-        assertEq(reward1.claimed(), true);
-        assertEq(reward2.claimed(), true);
-        assertEq(reward1.claimable(address(locker), address(token0)), 0);
-        assertEq(reward2.claimable(address(locker), address(token1)), 0);
-    }
-
-    function testFuzzRewardSourceAmounts(address tokenA, address tokenB, uint256 amtA, uint256 amtB) public {
-        MockRewardSource reward = new MockRewardSource();
-        address[] memory tokens = new address[](2);
-        tokens[0] = tokenA;
-        tokens[1] = tokenB;
-        reward.setRewardTokens(tokens);
-        reward.setReward(address(locker), tokenA, amtA);
-        reward.setReward(address(locker), tokenB, amtB);
-        vm.prank(owner);
-        locker.addRewardSource(address(reward));
-        (,, uint256[][] memory amounts) = locker.getAllClaimableRewards();
-        assertEq(amounts[0][0], amtA);
-        assertEq(amounts[0][1], amtB);
-    }
-
     function testFuzzLockerLockWithdraw(uint96 lockAmt, uint96 withdrawAmt) public {
         vm.assume(lockAmt > 0 && lockAmt <= 1e24);
         vm.assume(withdrawAmt > 0 && withdrawAmt <= lockAmt);
@@ -540,27 +420,6 @@ contract LPLockerTest is Test {
         vm.prank(owner);
         locker.withdrawLP(0);
         assertEq(locker.lockedAmount(), before);
-    }
-
-    function testAddSameRewardSourceTwice() public {
-        MockRewardSource reward = new MockRewardSource();
-        vm.prank(owner);
-        locker.addRewardSource(address(reward));
-        vm.prank(owner);
-        locker.addRewardSource(address(reward));
-        assertEq(locker.rewardSources(0), address(reward));
-        assertEq(locker.rewardSources(1), address(reward));
-    }
-
-    function testRemoveRewardSourceOutOfBounds() public {
-        MockRewardSource reward = new MockRewardSource();
-        vm.prank(owner);
-        locker.addRewardSource(address(reward));
-        vm.prank(owner);
-        locker.removeRewardSource(0);
-        vm.prank(owner);
-        vm.expectRevert(bytes("Invalid index"));
-        locker.removeRewardSource(0);
     }
 
     function testCanLockAfterFullWithdrawal() public {
@@ -669,78 +528,6 @@ contract LPLockerTest is Test {
         vm.prank(owner);
         vm.expectRevert(ILPLocker.LPNotLocked.selector);
         locker.topUpLock(topUp);
-    }
-
-    function testAddRewardSourceRevertsForNonCompliant() public {
-        MockNonCompliantRewardSource bad = new MockNonCompliantRewardSource();
-        vm.prank(owner);
-        vm.expectRevert(ILPLocker.RewardSourceDoesNotImplementRequiredInterface.selector);
-        locker.addRewardSource(address(bad));
-    }
-
-    function testBatchClaimRewardsClaimsSelectedSources() public {
-        MockRewardSource reward1 = new MockRewardSource();
-        MockRewardSource reward2 = new MockRewardSource();
-        address[] memory tokens = new address[](1);
-        tokens[0] = address(token0);
-        reward1.setRewardTokens(tokens);
-        reward2.setRewardTokens(tokens);
-        reward1.setReward(address(locker), address(token0), 100);
-        reward2.setReward(address(locker), address(token0), 200);
-        vm.prank(owner);
-        locker.addRewardSource(address(reward1));
-        vm.prank(owner);
-        locker.addRewardSource(address(reward2));
-        uint256[] memory indices = new uint256[](1);
-        indices[0] = 1;
-        vm.prank(owner);
-        locker.batchClaimRewards(indices);
-        assertEq(reward1.claimed(), false);
-        assertEq(reward2.claimed(), true);
-    }
-
-    function testBatchClaimRewardsInvalidIndexReverts() public {
-        MockRewardSource reward = new MockRewardSource();
-        address[] memory tokens = new address[](1);
-        tokens[0] = address(token0);
-        reward.setRewardTokens(tokens);
-        vm.prank(owner);
-        locker.addRewardSource(address(reward));
-        uint256[] memory indices = new uint256[](2);
-        indices[0] = 0;
-        indices[1] = 1;
-        vm.prank(owner);
-        vm.expectRevert(bytes("Invalid index"));
-        locker.batchClaimRewards(indices);
-    }
-
-    function testBatchClaimRewardsDuplicateIndices() public {
-        MockRewardSource reward = new MockRewardSource();
-        address[] memory tokens = new address[](1);
-        tokens[0] = address(token0);
-        reward.setRewardTokens(tokens);
-        reward.setReward(address(locker), address(token0), 123);
-        vm.prank(owner);
-        locker.addRewardSource(address(reward));
-        uint256[] memory indices = new uint256[](2);
-        indices[0] = 0;
-        indices[1] = 0;
-        vm.prank(owner);
-        locker.batchClaimRewards(indices);
-        assertEq(reward.claimed(), true);
-    }
-
-    function testBatchClaimRewardsEmptyArrayNoOp() public {
-        MockRewardSource reward = new MockRewardSource();
-        address[] memory tokens = new address[](1);
-        tokens[0] = address(token0);
-        reward.setRewardTokens(tokens);
-        vm.prank(owner);
-        locker.addRewardSource(address(reward));
-        uint256[] memory indices = new uint256[](0);
-        vm.prank(owner);
-        locker.batchClaimRewards(indices);
-        assertEq(reward.claimed(), false);
     }
 
     function _lock() internal {

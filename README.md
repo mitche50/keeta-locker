@@ -1,6 +1,6 @@
 # LPLocker - Liquidity Provider Token Locker
 
-A comprehensive smart contract system and admin dashboard for locking Aerodrome LP tokens with time-based withdrawal mechanisms, fee collection, and reward distribution.
+A comprehensive smart contract system and admin dashboard for locking Aerodrome LP tokens with time-based withdrawal mechanisms and fee collection.
 
 ## 🏗️ Architecture
 
@@ -17,7 +17,6 @@ A comprehensive smart contract system and admin dashboard for locking Aerodrome 
 - ✅ Cancel withdrawal before unlock time
 - ✅ Partial and full withdrawals
 - ✅ Fee collection from LP positions
-- ✅ Multi-source reward distribution
 
 ## 🚀 Quick Start
 
