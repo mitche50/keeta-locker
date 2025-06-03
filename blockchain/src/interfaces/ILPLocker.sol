@@ -20,23 +20,20 @@ interface ILPLocker {
     /// @notice Emitted when LP tokens are withdrawn
     /// @param lockId The ID of the lock
     /// @param amount The amount of LP tokens withdrawn
-    event LPWithdrawn(bytes32 lockId, uint256 amount);
+    event LPWithdrawn(bytes32 indexed lockId, uint256 amount);
     /// @notice Emitted when LP fees are claimed
     /// @param lockId The ID of the lock
     /// @param token0 The address of token0 in the LP
     /// @param amount0 The amount of token0 claimed
     /// @param token1 The address of token1 in the LP
     /// @param amount1 The amount of token1 claimed
-    event FeesClaimed(bytes32 lockId, address token0, uint256 amount0, address token1, uint256 amount1);
-    /// @notice Emitted when the owner is changed
-    /// @param newOwner The new owner address
-    event OwnerChanged(address newOwner);
+    event FeesClaimed(bytes32 indexed lockId, address token0, uint256 amount0, address token1, uint256 amount1);
     /// @notice Emitted when the fee receiver is changed
     /// @param newFeeReceiver The new fee receiver address
-    event FeeReceiverChanged(address newFeeReceiver);
-    /// @notice Emitted when the lock is fully withdrawn
+    event FeeReceiverChanged(address indexed newFeeReceiver);
+    /// @notice Emitted when the lock is fully withdrawn and deleted
     /// @param lockId The ID of the lock
-    event LockFullyWithdrawn(bytes32 lockId);
+    event LockFullyWithdrawn(bytes32 indexed lockId);
 
     /// @notice Thrown when attempting to set owner to the zero address
     error CannotAssignOwnerToAddressZero();
@@ -99,25 +96,18 @@ interface ILPLocker {
     function withdrawLP(bytes32 lockId, uint256 amount) external;
 
     /**
-     * @notice Changes the owner of the contract
-     * @dev Only callable by the current owner
-     * @param newOwner The new owner address
-     * @custom:error CannotAssignOwnerToAddressZero if newOwner is zero
-     */
-    function changeOwner(address newOwner) external;
-
-    /**
-     * @notice Changes the fee receiver address
+     * @notice Changes the fee receiver
      * @dev Only callable by the owner
      * @param newFeeReceiver The new fee receiver address
-     * @custom:error Reverts if newFeeReceiver is zero (uses require)
+     * @custom:error FeeReceiverCannotBeZeroAddress if new fee receiver is zero address
      */
     function changeFeeReceiver(address newFeeReceiver) external;
 
     /**
-     * @notice Claims accumulated fees from the Aerodrome LP pool and sends them to the fee receiver
-     * @dev Only callable by the owner. Only works if the LP is an Aerodrome pool.
-     * @custom:error Reverts if not locked (uses require)
+     * @notice Claims LP fees from the pool and sends them to the fee receiver
+     * @dev Only callable by the owner when liquidity is locked
+     * @param lockId The ID of the lock
+     * @custom:error LPNotLocked if not locked
      */
     function claimLPFees(bytes32 lockId) external;
 

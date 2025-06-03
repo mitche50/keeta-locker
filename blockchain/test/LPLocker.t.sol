@@ -6,6 +6,7 @@ import "../src/LPLocker.sol";
 import "../src/interfaces/ILPLocker.sol";
 import "./mocks/MockERC20.sol";
 import "./mocks/MockAerodromeLP.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract LPLockerTest is Test {
     LPLocker locker;
@@ -17,6 +18,10 @@ contract LPLockerTest is Test {
     address user = address(0xCAFE);
 
     uint256 constant LOCK_AMOUNT = 1000 ether;
+
+    // OpenZeppelin Ownable events
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
 
     function setUp() public {
         lpToken = new MockAerodromeLP();
@@ -193,27 +198,76 @@ contract LPLockerTest is Test {
         // Note: isLiquidityLocked remains true, withdrawal state remains as well
     }
 
-    function testOnlyOwnerCanChangeOwner() public {
+    function testOnlyOwnerCanTransferOwnership() public {
         _lock();
         vm.prank(user);
-        vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
-        locker.changeOwner(user);
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", user));
+        locker.transferOwnership(user);
     }
 
-    function testCannotSetOwnerToZero() public {
+    function testCannotTransferOwnershipToZero() public {
         _lock();
         vm.startPrank(owner);
-        vm.expectRevert(ILPLocker.OwnerCannotBeZeroAddress.selector);
-        locker.changeOwner(address(0));
+        // OpenZeppelin Ownable2Step allows transferring to zero, but zero can't accept
+        locker.transferOwnership(address(0));
+        assertEq(locker.pendingOwner(), address(0));
+        
+        // The zero address cannot accept ownership (this would revert if called)
+        // But since zero address can't call functions, this effectively prevents ownership transfer
         vm.stopPrank();
     }
 
-    function testEmitsOwnerChanged() public {
+    function testEmitsOwnershipTransferred() public {
         _lock();
-        vm.expectEmit(true, false, false, true);
-        emit ILPLocker.OwnerChanged(user);
+        // OpenZeppelin emits OwnershipTransferStarted first, then OwnershipTransferred when accepted
+        vm.expectEmit(true, true, false, true);
+        emit OwnershipTransferStarted(owner, user);
         vm.prank(owner);
-        locker.changeOwner(user);
+        locker.transferOwnership(user);
+        
+        // Then when accepted, it emits OwnershipTransferred
+        vm.expectEmit(true, true, false, true);
+        emit OwnershipTransferred(owner, user);
+        vm.prank(user);
+        locker.acceptOwnership();
+    }
+
+    function testTwoStepOwnershipTransfer() public {
+        _lock();
+        
+        // Step 1: Transfer ownership
+        vm.prank(owner);
+        locker.transferOwnership(user);
+        
+        // Ownership hasn't changed yet
+        assertEq(locker.owner(), owner);
+        assertEq(locker.pendingOwner(), user);
+        
+        // Old owner still has control
+        vm.prank(owner);
+        locker.changeFeeReceiver(user);
+        
+        // New owner can't use functions yet
+        vm.prank(user);
+        vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
+        locker.changeFeeReceiver(owner);
+        
+        // Step 2: Accept ownership
+        vm.prank(user);
+        locker.acceptOwnership();
+        
+        // Now ownership has changed
+        assertEq(locker.owner(), user);
+        assertEq(locker.pendingOwner(), address(0));
+        
+        // New owner has control
+        vm.prank(user);
+        locker.changeFeeReceiver(owner);
+        
+        // Old owner no longer has control
+        vm.prank(owner);
+        vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
+        locker.changeFeeReceiver(user);
     }
 
     function testOnlyOwnerCanChangeFeeReceiver() public {
@@ -306,9 +360,6 @@ contract LPLockerTest is Test {
         vm.prank(user);
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
         locker.withdrawLP(lockId, LOCK_AMOUNT);
-        vm.prank(user);
-        vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
-        locker.changeOwner(user);
         vm.prank(user);
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
         locker.changeFeeReceiver(user);

@@ -5,13 +5,14 @@ import "./interfaces/IAerodromePool.sol";
 import "./interfaces/ILPLocker.sol";
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
 
 /**
  * @title LPLocker
  * @notice Locks an ERC20 LP Token, then allows a 30-day withdrawal window after a trigger. Supports Aerodrome LP fee claiming.
  * @dev Only the owner can lock, trigger withdrawal, cancel, withdraw, claim fees, or change owner/fee receiver.
  */
-contract LPLocker is ILPLocker {
+contract LPLocker is ILPLocker, Ownable2Step {
     using SafeERC20 for IERC20;
 
     struct Lock {
@@ -21,8 +22,6 @@ contract LPLocker is ILPLocker {
         bool isWithdrawalTriggered;
     }
 
-    /// @notice The address with exclusive control over the locker
-    address public owner;
     /// @notice The address that receives claimed LP fees
     address public feeReceiver;
     /// @notice The address of the locked LP token (must be Aerodrome LP for fee claiming)
@@ -38,7 +37,7 @@ contract LPLocker is ILPLocker {
     /// @notice Array of all lock IDs for enumeration
     bytes32[] private _allLockIds;
 
-    constructor(address tokenContract_, address owner_, address feeReceiver_) {
+    constructor(address tokenContract_, address owner_, address feeReceiver_) Ownable(owner_) {
         if (tokenContract_ == address(0)) {
             revert TokenContractCannotBeZeroAddress();
         }
@@ -46,7 +45,6 @@ contract LPLocker is ILPLocker {
             revert OwnerCannotBeZeroAddress();
         }
         tokenContract = tokenContract_;
-        owner = owner_;
         feeReceiver = feeReceiver_;
     }
 
@@ -69,7 +67,7 @@ contract LPLocker is ILPLocker {
     {
         Lock memory lock = locks[lockId];
         return
-            (owner, feeReceiver, tokenContract, lock.amount, lock.lockUpEndTime, lock.isLiquidityLocked, lock.isWithdrawalTriggered);
+            (owner(), feeReceiver, tokenContract, lock.amount, lock.lockUpEndTime, lock.isLiquidityLocked, lock.isWithdrawalTriggered);
     }
 
     /// @inheritdoc ILPLocker
@@ -168,23 +166,13 @@ contract LPLocker is ILPLocker {
         }
         lock.amount -= amount;
         locks[lockId] = lock;
-        IERC20(tokenContract).safeTransfer(owner, amount);
+        IERC20(tokenContract).safeTransfer(owner(), amount);
         if (lock.amount == 0) {
             delete locks[lockId];
             _removeLockId(lockId);
             emit LockFullyWithdrawn(lockId);
         }
         emit LPWithdrawn(lockId, amount);
-    }
-
-    /// @inheritdoc ILPLocker
-    function changeOwner(address newOwner) external {
-        _requireIsOwner();
-        if (newOwner == address(0)) {
-            revert OwnerCannotBeZeroAddress();
-        }
-        owner = newOwner;
-        emit OwnerChanged(newOwner);
     }
 
     /// @inheritdoc ILPLocker
@@ -244,7 +232,7 @@ contract LPLocker is ILPLocker {
      * @dev Reverts with OnlyOwnerCanCall if not owner
      */
     function _requireIsOwner() internal view {
-        if (msg.sender != owner) {
+        if (msg.sender != owner()) {
             revert OnlyOwnerCanCall();
         }
     }
@@ -255,7 +243,7 @@ contract LPLocker is ILPLocker {
         if (token == tokenContract) {
             revert CannotRecoverLPToken();
         }
-        IERC20(token).safeTransfer(owner, amount);
+        IERC20(token).safeTransfer(owner(), amount);
     }
 
     /// @inheritdoc ILPLocker

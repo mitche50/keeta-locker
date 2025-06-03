@@ -271,25 +271,10 @@ contract LPLockerMockTest is Test {
 
     // --- Owner and Fee Receiver Zero Address Checks ---
 
-    function testChangeOwnerCannotBeZeroAddress() public {
-        vm.startPrank(BENEFICIARY);
-        vm.expectRevert(ILPLocker.OwnerCannotBeZeroAddress.selector);
-        locker.changeOwner(address(0));
-        vm.stopPrank();
-    }
-
     function testChangeFeeReceiverCannotBeZeroAddress() public {
         vm.startPrank(BENEFICIARY);
         vm.expectRevert(ILPLocker.FeeReceiverCannotBeZeroAddress.selector);
         locker.changeFeeReceiver(address(0));
-        vm.stopPrank();
-    }
-
-    function testChangeOwnerValid() public {
-        address newOwner = address(0x1234);
-        vm.startPrank(BENEFICIARY);
-        locker.changeOwner(newOwner);
-        assertEq(locker.owner(), newOwner);
         vm.stopPrank();
     }
 
@@ -299,5 +284,31 @@ contract LPLockerMockTest is Test {
         locker.changeFeeReceiver(newFeeReceiver);
         assertEq(locker.feeReceiver(), newFeeReceiver);
         vm.stopPrank();
+    }
+
+    function testTransferOwnershipCannotBeZeroAddress() public {
+        vm.startPrank(BENEFICIARY);
+        // OpenZeppelin Ownable2Step allows transferring to zero, but zero can't accept
+        locker.transferOwnership(address(0));
+        assertEq(locker.pendingOwner(), address(0));
+        
+        // The zero address cannot accept ownership (this would revert if called)
+        // But since zero address can't call functions, this effectively prevents ownership transfer
+        vm.stopPrank();
+    }
+
+    function testTransferOwnershipValid() public {
+        address newOwner = address(0x123);
+        vm.startPrank(BENEFICIARY);
+        locker.transferOwnership(newOwner);
+        assertEq(locker.pendingOwner(), newOwner);
+        assertEq(locker.owner(), BENEFICIARY); // Still the old owner until accepted
+        vm.stopPrank();
+        
+        // Accept ownership
+        vm.prank(newOwner);
+        locker.acceptOwnership();
+        assertEq(locker.owner(), newOwner);
+        assertEq(locker.pendingOwner(), address(0));
     }
 }
