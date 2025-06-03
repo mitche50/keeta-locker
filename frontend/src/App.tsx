@@ -2,11 +2,12 @@ import React from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useChainId } from "wagmi";
 import { getContractAddress, BASE_MAINNET, ANVIL_LOCAL } from "./config";
-import LockInfoPanel from "./components/LockInfoPanel";
+import AllLocksPanel from "./components/AllLocksPanel";
 import LPBalancePanel from "./components/LPBalancePanel";
 import ClaimableFeesPanel from "./components/ClaimableFeesPanel";
 import DepositPanel from "./components/DepositPanel";
 import WithdrawalPanel from "./components/WithdrawalPanel";
+import EmergencyRecoveryPanel from "./components/EmergencyRecoveryPanel";
 
 const App: React.FC = () => {
     const chainId = useChainId();
@@ -58,16 +59,35 @@ const App: React.FC = () => {
                     {/* Header */}
                     <div className="text-center mb-8">
                         <h1 className="text-3xl font-bold text-gray-1 mb-2">LP Token Locker Dashboard</h1>
-                        <p className="text-gray-3">Monitor and manage your locked liquidity provider tokens</p>
+                        <p className="text-gray-3">Monitor and manage your locked liquidity provider tokens with 30-day withdrawal timelock</p>
                     </div>
 
                     {/* Grid Layout */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-                        <LockInfoPanel />
-                        <LPBalancePanel />
-                        <DepositPanel />
-                        <WithdrawalPanel />
-                        <ClaimableFeesPanel />
+                        {/* Main locks display - spans full width on smaller screens */}
+                        <div className="lg:col-span-2 xl:col-span-2">
+                            <AllLocksPanel />
+                        </div>
+
+                        {/* Side panels */}
+                        <div className="space-y-6">
+                            <LPBalancePanel />
+                            <DepositPanel />
+                        </div>
+
+                        {/* Withdrawal and Fee claiming - spans multiple columns */}
+                        <div className="lg:col-span-2 xl:col-span-2">
+                            <WithdrawalPanel />
+                        </div>
+
+                        <div className="space-y-6">
+                            <ClaimableFeesPanel />
+                        </div>
+
+                        {/* Emergency Recovery - spans full width */}
+                        <div className="lg:col-span-2 xl:col-span-3">
+                            <EmergencyRecoveryPanel />
+                        </div>
                     </div>
                 </div>
             </main>

@@ -8,11 +8,18 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
  * @title LPLocker
- * @notice Locks an ERC20 LP Token, then allows a 90-day withdrawal window after a trigger. Supports Aerodrome LP fee claiming.
+ * @notice Locks an ERC20 LP Token, then allows a 30-day withdrawal window after a trigger. Supports Aerodrome LP fee claiming.
  * @dev Only the owner can lock, trigger withdrawal, cancel, withdraw, claim fees, or change owner/fee receiver.
  */
 contract LPLocker is ILPLocker {
     using SafeERC20 for IERC20;
+
+    struct Lock {
+        uint256 amount;
+        uint256 lockUpEndTime;
+        bool isLiquidityLocked;
+        bool isWithdrawalTriggered;
+    }
 
     /// @notice The address with exclusive control over the locker
     address public owner;
@@ -20,19 +27,24 @@ contract LPLocker is ILPLocker {
     address public feeReceiver;
     /// @notice The address of the locked LP token (must be Aerodrome LP for fee claiming)
     address public immutable tokenContract;
-    /// @notice The amount of LP tokens currently locked
-    uint256 public lockedAmount;
-    /// @notice The timestamp when the 90-day withdrawal window ends (0 if not triggered)
-    uint256 public lockUpEndTime;
-    /// @notice True if liquidity is currently locked
-    bool public isLiquidityLocked;
-    /// @notice True if withdrawal has been triggered
-    bool public isWithdrawalTriggered;
+    /// @notice mapping of lock ID to lock info. Lock ID is a hash of the lock parameters.
+    mapping(bytes32 => Lock) public locks;
 
     /// @notice The delay for the withdrawal window
     uint256 public constant WITHDRAW_DELAY = 30 days;
 
+    mapping(address => uint256) private _nonces;
+    
+    /// @notice Array of all lock IDs for enumeration
+    bytes32[] private _allLockIds;
+
     constructor(address tokenContract_, address owner_, address feeReceiver_) {
+        if (tokenContract_ == address(0)) {
+            revert TokenContractCannotBeZeroAddress();
+        }
+        if (owner_ == address(0)) {
+            revert OwnerCannotBeZeroAddress();
+        }
         tokenContract = tokenContract_;
         owner = owner_;
         feeReceiver = feeReceiver_;
@@ -41,7 +53,7 @@ contract LPLocker is ILPLocker {
     // ----------- VIEW FUNCTIONS -----------
 
     /// @inheritdoc ILPLocker
-    function getLockInfo()
+    function getLockInfo(bytes32 lockId)
         external
         view
         override
@@ -49,14 +61,15 @@ contract LPLocker is ILPLocker {
             address owner_,
             address feeReceiver_,
             address tokenContract_,
-            uint256 lockedAmount_,
+            uint256 amount_,
             uint256 lockUpEndTime_,
             bool isLiquidityLocked_,
             bool isWithdrawalTriggered_
         )
     {
+        Lock memory lock = locks[lockId];
         return
-            (owner, feeReceiver, tokenContract, lockedAmount, lockUpEndTime, isLiquidityLocked, isWithdrawalTriggered);
+            (owner, feeReceiver, tokenContract, lock.amount, lock.lockUpEndTime, lock.isLiquidityLocked, lock.isWithdrawalTriggered);
     }
 
     /// @inheritdoc ILPLocker
@@ -65,17 +78,20 @@ contract LPLocker is ILPLocker {
     }
 
     /// @inheritdoc ILPLocker
-    function getUnlockTime() external view returns (uint256 lockUpEndTime_) {
-        return lockUpEndTime;
+    function getUnlockTime(bytes32 lockId) external view returns (uint256 lockUpEndTime_) {
+        return locks[lockId].lockUpEndTime;
     }
 
     /// @inheritdoc ILPLocker
-    function getClaimableFees()
+    function getClaimableFees(bytes32 lockId)
         external
         view
-        override
         returns (address token0, uint256 amount0, address token1, uint256 amount1)
     {
+        Lock memory lock = locks[lockId];
+        if (!lock.isLiquidityLocked) {
+            revert LPNotLocked();
+        }
         IAerodromePool pool = IAerodromePool(tokenContract);
         token0 = pool.token0();
         token1 = pool.token1();
@@ -87,68 +103,78 @@ contract LPLocker is ILPLocker {
     // ----------- STATE-CHANGING FUNCTIONS -----------
 
     /// @inheritdoc ILPLocker
-    function lockLiquidity(uint256 amount) external {
+    function lockLiquidity(uint256 amount) external returns (bytes32 lockId) {
         _requireIsOwner();
-        if (isLiquidityLocked) {
-            revert LPAlreadyLocked();
-        }
         if (amount == 0) {
             revert LPAmountZero();
         }
+        uint256 nonce = _nonces[msg.sender]++;
+        lockId = keccak256(abi.encode(msg.sender, amount, block.timestamp, nonce));
         IERC20(tokenContract).safeTransferFrom(msg.sender, address(this), amount);
-        lockedAmount = amount;
-        isLiquidityLocked = true;
-        emit LiquidityLocked(amount);
+        locks[lockId] = Lock({
+            amount: amount, 
+            lockUpEndTime: 0, 
+            isLiquidityLocked: true, 
+            isWithdrawalTriggered: false
+        });
+        _allLockIds.push(lockId);
+        emit LiquidityLocked(lockId, amount);
     }
 
     /// @inheritdoc ILPLocker
-    function triggerWithdrawal() external {
+    function triggerWithdrawal(bytes32 lockId) external {
         _requireIsOwner();
-        if (!isLiquidityLocked) {
+        Lock memory lock = locks[lockId];
+        if (!lock.isLiquidityLocked) {
             revert LPNotLocked();
         }
-        if (lockUpEndTime != 0) {
+        if (lock.lockUpEndTime != 0) {
             revert WithdrawalAlreadyTriggered();
         }
-        lockUpEndTime = block.timestamp + WITHDRAW_DELAY;
-        isWithdrawalTriggered = true;
-        emit WithdrawalTriggered(lockUpEndTime);
+        lock.lockUpEndTime = block.timestamp + WITHDRAW_DELAY;
+        lock.isWithdrawalTriggered = true;
+        locks[lockId] = lock;
+        emit WithdrawalTriggered(lockId, lock.lockUpEndTime);
     }
 
     /// @inheritdoc ILPLocker
-    function cancelWithdrawalTrigger() external {
+    function cancelWithdrawalTrigger(bytes32 lockId) external {
         _requireIsOwner();
-        if (!isLiquidityLocked) {
+        Lock memory lock = locks[lockId];
+        if (!lock.isLiquidityLocked) {
             revert LPNotLocked();
         }
-        if (lockUpEndTime == 0) {
+        if (lock.lockUpEndTime == 0) {
             revert WithdrawalNotTriggered();
         }
-        lockUpEndTime = 0;
-        isWithdrawalTriggered = false;
-        emit WithdrawalCancelled();
+        lock.lockUpEndTime = 0;
+        lock.isWithdrawalTriggered = false;
+        locks[lockId] = lock;
+        emit WithdrawalCancelled(lockId);
     }
 
     /// @inheritdoc ILPLocker
-    function withdrawLP(uint256 amount) external {
+    function withdrawLP(bytes32 lockId, uint256 amount) external {
         _requireIsOwner();
-        if (!isLiquidityLocked) {
+        Lock memory lock = locks[lockId];
+        if (!lock.isLiquidityLocked) {
             revert LPNotLocked();
         }
-        if (lockUpEndTime == 0) {
+        if (lock.lockUpEndTime == 0) {
             revert WithdrawalNotTriggered();
         }
-        if (block.timestamp < lockUpEndTime) {
+        if (block.timestamp < lock.lockUpEndTime) {
             revert LockupNotEnded();
         }
+        lock.amount -= amount;
+        locks[lockId] = lock;
         IERC20(tokenContract).safeTransfer(owner, amount);
-        lockedAmount -= amount;
-        emit LPWithdrawn(amount);
-        if (lockedAmount == 0) {
-            isLiquidityLocked = false;
-            lockUpEndTime = 0;
-            isWithdrawalTriggered = false;
+        if (lock.amount == 0) {
+            delete locks[lockId];
+            _removeLockId(lockId);
+            emit LockFullyWithdrawn(lockId);
         }
+        emit LPWithdrawn(lockId, amount);
     }
 
     /// @inheritdoc ILPLocker
@@ -172,9 +198,13 @@ contract LPLocker is ILPLocker {
     }
 
     /// @inheritdoc ILPLocker
-    function claimLPFees() external {
+    function claimLPFees(bytes32 lockId) external {
         _requireIsOwner();
-        require(isLiquidityLocked, "LP not locked");
+        Lock memory lock = locks[lockId];
+        if (!lock.isLiquidityLocked) {
+            revert LPNotLocked();
+        }
+
         IAerodromePool pool = IAerodromePool(tokenContract);
         (uint256 amount0, uint256 amount1) = pool.claimFees();
         address token0 = pool.token0();
@@ -187,21 +217,26 @@ contract LPLocker is ILPLocker {
         if (bal1 > 0) {
             IERC20(token1).safeTransfer(feeReceiver, bal1);
         }
-        emit FeesClaimed(token0, amount0, token1, amount1);
+        emit FeesClaimed(lockId, token0, amount0, token1, amount1);
     }
 
     /// @inheritdoc ILPLocker
-    function topUpLock(uint256 amount) external {
+    function topUpLock(bytes32 lockId, uint256 amount) external {
         _requireIsOwner();
-        if (!isLiquidityLocked) {
+        Lock memory lock = locks[lockId];
+        if (!lock.isLiquidityLocked) {
             revert LPNotLocked();
+        }
+        if (lock.isWithdrawalTriggered) {
+            revert WithdrawalAlreadyTriggered();
         }
         if (amount == 0) {
             revert LPAmountZero();
         }
         IERC20(tokenContract).safeTransferFrom(msg.sender, address(this), amount);
-        lockedAmount += amount;
-        emit LiquidityLocked(amount);
+        lock.amount += amount;
+        locks[lockId] = lock;
+        emit LiquidityLocked(lockId, lock.amount);
     }
 
     /**
@@ -211,6 +246,41 @@ contract LPLocker is ILPLocker {
     function _requireIsOwner() internal view {
         if (msg.sender != owner) {
             revert OnlyOwnerCanCall();
+        }
+    }
+
+    /// @inheritdoc ILPLocker
+    function recoverToken(address token, uint256 amount) external {
+        _requireIsOwner();
+        if (token == tokenContract) {
+            revert CannotRecoverLPToken();
+        }
+        IERC20(token).safeTransfer(owner, amount);
+    }
+
+    /// @inheritdoc ILPLocker
+    function getAllLockIds() external view returns (bytes32[] memory) {
+        return _allLockIds;
+    }
+
+    /// @inheritdoc ILPLocker
+    function lockExists(bytes32 lockId) external view returns (bool) {
+        return locks[lockId].isLiquidityLocked;
+    }
+
+    /**
+     * @notice Internal helper to remove a lock ID from the tracking array
+     * @param lockId The lock ID to remove
+     */
+    function _removeLockId(bytes32 lockId) internal {
+        uint256 length = _allLockIds.length;
+        for (uint256 i = 0; i < length; i++) {
+            if (_allLockIds[i] == lockId) {
+                // Move the last element to this position and pop
+                _allLockIds[i] = _allLockIds[length - 1];
+                _allLockIds.pop();
+                break;
+            }
         }
     }
 }

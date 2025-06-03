@@ -7,28 +7,36 @@ pragma solidity ^0.8.24;
  */
 interface ILPLocker {
     /// @notice Emitted when liquidity is locked
+    /// @param lockId The ID of the lock
     /// @param amount The amount of LP tokens locked
-    event LiquidityLocked(uint256 amount);
+    event LiquidityLocked(bytes32 lockId, uint256 amount);
     /// @notice Emitted when withdrawal is triggered
+    /// @param lockId The ID of the lock
     /// @param unlockTime The timestamp when withdrawal becomes available
-    event WithdrawalTriggered(uint256 unlockTime);
+    event WithdrawalTriggered(bytes32 lockId, uint256 unlockTime);
     /// @notice Emitted when withdrawal trigger is cancelled
-    event WithdrawalCancelled();
+    /// @param lockId The ID of the lock
+    event WithdrawalCancelled(bytes32 lockId);
     /// @notice Emitted when LP tokens are withdrawn
+    /// @param lockId The ID of the lock
     /// @param amount The amount of LP tokens withdrawn
-    event LPWithdrawn(uint256 amount);
+    event LPWithdrawn(bytes32 lockId, uint256 amount);
     /// @notice Emitted when LP fees are claimed
+    /// @param lockId The ID of the lock
     /// @param token0 The address of token0 in the LP
     /// @param amount0 The amount of token0 claimed
     /// @param token1 The address of token1 in the LP
     /// @param amount1 The amount of token1 claimed
-    event FeesClaimed(address token0, uint256 amount0, address token1, uint256 amount1);
+    event FeesClaimed(bytes32 lockId, address token0, uint256 amount0, address token1, uint256 amount1);
     /// @notice Emitted when the owner is changed
     /// @param newOwner The new owner address
     event OwnerChanged(address newOwner);
     /// @notice Emitted when the fee receiver is changed
     /// @param newFeeReceiver The new fee receiver address
     event FeeReceiverChanged(address newFeeReceiver);
+    /// @notice Emitted when the lock is fully withdrawn
+    /// @param lockId The ID of the lock
+    event LockFullyWithdrawn(bytes32 lockId);
 
     /// @notice Thrown when attempting to set owner to the zero address
     error CannotAssignOwnerToAddressZero();
@@ -52,36 +60,43 @@ interface ILPLocker {
     error OwnerCannotBeZeroAddress();
     /// @notice Thrown when attempting to set the fee receiver to the zero address
     error FeeReceiverCannotBeZeroAddress();
-
+    /// @notice Thrown when attempting to set the token contract to the zero address
+    error TokenContractCannotBeZeroAddress();
+    /// @notice Thrown when attempting to recover the locked LP token
+    error CannotRecoverLPToken();
     /**
      * @notice Locks a specified amount of LP tokens in the contract
      * @dev Only callable by the owner. Can only be called once until all tokens are withdrawn.
      * @param amount The amount of LP tokens to lock
+     * @return lockId The ID of the lock
      * @custom:error LPAlreadyLocked if already locked, LPAmountZero if amount is zero
      */
-    function lockLiquidity(uint256 amount) external;
+    function lockLiquidity(uint256 amount) external returns (bytes32 lockId);
 
     /**
-     * @notice Triggers the 90-day withdrawal window
+     * @notice Triggers the timelocked withdrawal
      * @dev Only callable by the owner if liquidity is locked and not already triggered
+     * @param lockId The ID of the lock
      * @custom:error LPNotLocked if not locked, WithdrawalAlreadyTriggered if already triggered
      */
-    function triggerWithdrawal() external;
+    function triggerWithdrawal(bytes32 lockId) external;
 
     /**
-     * @notice Cancels the withdrawal trigger, resetting the 90-day window
+     * @notice Cancels the withdrawal trigger, resetting the timelock
      * @dev Only callable by the owner if withdrawal is triggered
+     * @param lockId The ID of the lock
      * @custom:error LPNotLocked if not locked, WithdrawalNotTriggered if not triggered
      */
-    function cancelWithdrawalTrigger() external;
+    function cancelWithdrawalTrigger(bytes32 lockId) external;
 
     /**
      * @notice Withdraws a specified amount of LP tokens during the withdrawal window
-     * @dev Only callable by the owner during the 90-day window. Resets state if all tokens withdrawn.
+     * @dev Only callable by the owner during the timelock. Resets state if all tokens withdrawn.
+     * @param lockId The ID of the lock
      * @param amount The amount of LP tokens to withdraw
-     * @custom:error LPNotLocked if not locked, WithdrawalNotTriggered if not triggered, LockupNotEnded if window expired
+     * @custom:error LPNotLocked if not locked, WithdrawalNotTriggered if not triggered, LockupNotEnded if timelock not complete
      */
-    function withdrawLP(uint256 amount) external;
+    function withdrawLP(bytes32 lockId, uint256 amount) external;
 
     /**
      * @notice Changes the owner of the contract
@@ -104,7 +119,7 @@ interface ILPLocker {
      * @dev Only callable by the owner. Only works if the LP is an Aerodrome pool.
      * @custom:error Reverts if not locked (uses require)
      */
-    function claimLPFees() external;
+    function claimLPFees(bytes32 lockId) external;
 
     /**
      * @notice Returns all relevant lock state information for monitoring
@@ -112,11 +127,11 @@ interface ILPLocker {
      * @return feeReceiver_ The current fee receiver
      * @return tokenContract_ The address of the locked LP token
      * @return lockedAmount_ The amount of LP tokens locked
-     * @return lockUpEndTime_ The time when the 90-day withdrawal window ends (0 if not triggered)
+     * @return lockUpEndTime_ The time when the timelock ends (0 if not triggered)
      * @return isLiquidityLocked_ True if liquidity is currently locked
      * @return isWithdrawalTriggered_ True if withdrawal has been triggered
      */
-    function getLockInfo()
+    function getLockInfo(bytes32 lockId)
         external
         view
         returns (
@@ -137,19 +152,22 @@ interface ILPLocker {
 
     /**
      * @notice Returns the unlock time for the withdrawal window
-     * @return lockUpEndTime_ The time when the 90-day withdrawal window ends (0 if not triggered)
+     * @param lockId The ID of the lock
+     * @return lockUpEndTime_ The time when the timelock ends (0 if not triggered)
      */
-    function getUnlockTime() external view returns (uint256 lockUpEndTime_);
+    function getUnlockTime(bytes32 lockId) external view returns (uint256 lockUpEndTime_);
 
     /**
-     * @notice Returns the amount of fees currently claimable from the Aerodrome LP pool
+     * @notice Returns the amount of fees claimable from the Aerodrome LP pool for a given lock 
+     *         as of the last time the `_updateFor` function was called on the Aerodrome LP pool.
+     * @param lockId The ID of the lock
      * @dev Returns token0, amount0, token1, amount1 as would be claimable by claimFees()
      * @return token0 The address of token0 in the LP
      * @return amount0 The amount of token0 claimable
      * @return token1 The address of token1 in the LP
      * @return amount1 The amount of token1 claimable
      */
-    function getClaimableFees()
+    function getClaimableFees(bytes32 lockId)
         external
         view
         returns (address token0, uint256 amount0, address token1, uint256 amount1);
@@ -159,5 +177,26 @@ interface ILPLocker {
      * @dev Only callable by the owner when liquidity is already locked
      * @param amount The amount of LP tokens to add to the lock
      */
-    function topUpLock(uint256 amount) external;
+    function topUpLock(bytes32 lockId, uint256 amount) external;
+
+    /**
+     * @notice Recovers accidentally sent tokens (non-LP tokens only)
+     * @dev Only callable by the owner. Cannot recover the locked LP token.
+     * @param token The address of the token to recover
+     * @param amount The amount of tokens to recover
+     */
+    function recoverToken(address token, uint256 amount) external;
+
+    /**
+     * @notice Returns all lock IDs for enumeration
+     * @return An array of all lock IDs
+     */
+    function getAllLockIds() external view returns (bytes32[] memory);
+
+    /**
+     * @notice Checks if a lock exists
+     * @param lockId The ID of the lock to check
+     * @return True if the lock exists, false otherwise
+     */
+    function lockExists(bytes32 lockId) external view returns (bool);
 }

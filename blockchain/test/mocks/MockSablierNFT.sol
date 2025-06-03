@@ -23,7 +23,7 @@ contract MockSablierNFT {
         return status;
     }
 
-    function withdrawMax(uint256 id, address to) external returns (uint128) {
+    function withdrawMax(uint256 id, address /*to*/) external returns (uint128) {
         require(id == tokenId, "Invalid tokenId");
         require(msg.sender == owner, "Not owner");
         require(status == 2, "Not withdrawable");

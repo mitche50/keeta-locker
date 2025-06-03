@@ -40,9 +40,6 @@ contract LPLockerForkSablierTest is Test {
         // Check stream ownership
         address owner = IERC721(SABLIER).ownerOf(TOKEN_ID);
 
-        // Check stream status
-        uint8 status = ISablierNFT(SABLIER).statusOf(TOKEN_ID);
-
         // Withdraw all LP from Sablier
         uint256 balBefore = IERC20(LP).balanceOf(BENEFICIARY);
         ISablierNFT(SABLIER).withdrawMax(TOKEN_ID, BENEFICIARY);
@@ -52,17 +49,32 @@ contract LPLockerForkSablierTest is Test {
 
         // Approve and lock in LPLocker
         IERC20(LP).approve(address(locker), withdrawn);
-        locker.lockLiquidity(withdrawn);
+        bytes32 lockId = locker.lockLiquidity(withdrawn);
 
         // Assert LPLocker state
-        assertEq(locker.lockedAmount(), withdrawn);
-        assertEq(locker.isLiquidityLocked(), true);
+        (address owner_, address feeReceiver_, address tokenContract_, uint256 lockedAmount_, uint256 lockUpEndTime_, bool isLiquidityLocked_, bool isWithdrawalTriggered_) = locker.getLockInfo(lockId);
+        assertEq(owner_, owner);
+        assertEq(feeReceiver_, FEE_RECEIVER);
+        assertEq(tokenContract_, address(LP));
+        assertEq(lockedAmount_, withdrawn);
+        assertEq(lockUpEndTime_, 0);
+        assertEq(isLiquidityLocked_, true);
+        assertEq(isWithdrawalTriggered_, false);
         assertEq(IERC20(LP).balanceOf(address(locker)), withdrawn);
-
+        assertEq(locker.getUnlockTime(lockId), 0);
+        
+        // Test claimable fees - real Aerodrome LP will have actual token addresses
+        (address token0, uint256 amount0, address token1, uint256 amount1) = locker.getClaimableFees(lockId);
+        // Token addresses should be non-zero for real Aerodrome LP
+        assertTrue(token0 != address(0), "token0 should not be zero address");
+        assertTrue(token1 != address(0), "token1 should not be zero address");
+        // Fee amounts should start at 0
+        assertEq(amount0, 0);
+        assertEq(amount1, 0);
         vm.stopPrank();
     }
 
-    function testGetStablierStatus() public {
+    function testGetStablierStatus() public view {
         uint8 status = ISablierNFT(SABLIER).statusOf(TOKEN_ID);
         console2.log("status", status);
         address owner = IERC721(SABLIER).ownerOf(TOKEN_ID);

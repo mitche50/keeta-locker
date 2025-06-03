@@ -4,26 +4,20 @@ import { parseEther, formatEther } from "viem";
 import { useLPLocker } from "../hooks/useLPLocker";
 import LPLockerABI from "../abi/LPLocker.json";
 import ERC20ABI from "../abi/ERC20.json";
-import { getContractAddress } from "../config";
-import { useChainId } from "wagmi";
-import toast from "react-hot-toast";
 import ErrorDisplay from "./ErrorDisplay";
 
 const DepositPanel: React.FC = () => {
     const { address, isConnected } = useAccount();
-    const chainId = useChainId();
-    const { lockInfo } = useLPLocker();
+    const { tokenContract, contractAddress } = useLPLocker();
 
     const [depositAmount, setDepositAmount] = useState("");
     const [isApproving, setIsApproving] = useState(false);
     const [isDepositing, setIsDepositing] = useState(false);
-    const [approveHash, setApproveHash] = useState<`0x${string}` | undefined>();
-    const [depositHash, setDepositHash] = useState<`0x${string}` | undefined>();
 
-    const lpLockerAddress = getContractAddress(chainId, 'lpLocker') as `0x${string}`;
+    const { writeContract, data: hash, error, isPending } = useWriteContract();
 
-    // Get LP token address from lock info
-    const lpTokenAddress = (Array.isArray(lockInfo.data) ? lockInfo.data[2] : undefined) as `0x${string}` | undefined;
+    // Get LP token address from contract
+    const lpTokenAddress = tokenContract.data as `0x${string}` | undefined;
 
     // Check user's LP token balance
     const { data: userLPBalance } = useReadContract({
@@ -41,24 +35,15 @@ const DepositPanel: React.FC = () => {
         address: lpTokenAddress,
         abi: ERC20ABI,
         functionName: "allowance",
-        args: [address, lpLockerAddress],
+        args: [address, contractAddress],
         query: {
             enabled: !!lpTokenAddress && !!address,
         }
     });
 
-    // Write contract hooks
-    const { writeContract: approve } = useWriteContract();
-    const { writeContract: deposit } = useWriteContract();
-
-    // Wait for approve transaction
-    const { isLoading: isApproveLoading, isSuccess: isApproveSuccess } = useWaitForTransactionReceipt({
-        hash: approveHash,
-    });
-
-    // Wait for deposit transaction
-    const { isLoading: isDepositLoading, isSuccess: isDepositSuccess } = useWaitForTransactionReceipt({
-        hash: depositHash,
+    // Wait for transaction
+    const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
+        hash,
     });
 
     const handleApprove = async () => {
@@ -66,32 +51,17 @@ const DepositPanel: React.FC = () => {
 
         try {
             setIsApproving(true);
-            toast.loading("Approving LP tokens...", { id: "approve" });
-
             const amount = parseEther(depositAmount);
-            approve({
+            await writeContract({
                 address: lpTokenAddress,
                 abi: ERC20ABI,
                 functionName: "approve",
-                args: [lpLockerAddress, amount],
-            }, {
-                onSuccess: (hash) => {
-                    setApproveHash(hash);
-                    toast.dismiss("approve");
-                    toast.success("Approval transaction submitted!");
-                },
-                onError: (error) => {
-                    console.error("Approve error:", error);
-                    setIsApproving(false);
-                    toast.dismiss("approve");
-                    toast.error("Failed to approve LP tokens");
-                }
+                args: [contractAddress, amount],
             });
         } catch (error) {
             console.error("Approve error:", error);
+        } finally {
             setIsApproving(false);
-            toast.dismiss("approve");
-            toast.error("Failed to approve LP tokens");
         }
     };
 
@@ -100,51 +70,27 @@ const DepositPanel: React.FC = () => {
 
         try {
             setIsDepositing(true);
-            toast.loading("Depositing LP tokens...", { id: "deposit" });
-
             const amount = parseEther(depositAmount);
-            deposit({
-                address: lpLockerAddress,
+            await writeContract({
+                address: contractAddress,
                 abi: LPLockerABI,
-                functionName: "depositLPTokens",
+                functionName: "lockLiquidity",
                 args: [amount],
-            }, {
-                onSuccess: (hash) => {
-                    setDepositHash(hash);
-                    toast.dismiss("deposit");
-                    toast.success("Deposit transaction submitted!");
-                },
-                onError: (error) => {
-                    console.error("Deposit error:", error);
-                    setIsDepositing(false);
-                    toast.dismiss("deposit");
-                    toast.error("Failed to deposit LP tokens");
-                }
             });
         } catch (error) {
             console.error("Deposit error:", error);
+        } finally {
             setIsDepositing(false);
-            toast.dismiss("deposit");
-            toast.error("Failed to deposit LP tokens");
         }
     };
 
     // Handle transaction success
     React.useEffect(() => {
-        if (isApproveSuccess) {
-            setIsApproving(false);
+        if (isSuccess && !isApproving) {
             refetchAllowance();
-            toast.success("LP tokens approved successfully!");
-        }
-    }, [isApproveSuccess, refetchAllowance]);
-
-    React.useEffect(() => {
-        if (isDepositSuccess) {
-            setIsDepositing(false);
             setDepositAmount("");
-            toast.success("LP tokens deposited successfully!");
         }
-    }, [isDepositSuccess]);
+    }, [isSuccess, isApproving, refetchAllowance]);
 
     const handleMaxClick = () => {
         if (userLPBalance) {
@@ -175,19 +121,19 @@ const DepositPanel: React.FC = () => {
     if (!isConnected) {
         return (
             <div className="bg-[#2a2a2f] rounded-xl border border-[#3a3a3f] p-6">
-                <h2 className="text-xl font-semibold mb-6 text-salmon">Deposit LP Tokens</h2>
+                <h2 className="text-xl font-semibold mb-6 text-salmon">Lock LP Tokens</h2>
                 <div className="flex items-center justify-center py-8 text-gray-3">
                     <div className="text-center">
                         <div className="text-2xl mb-2">🔌</div>
                         <div className="font-medium">Connect your wallet</div>
-                        <div className="text-sm">Connect your wallet to deposit LP tokens</div>
+                        <div className="text-sm">Connect your wallet to lock LP tokens</div>
                     </div>
                 </div>
             </div>
         );
     }
 
-    if (lockInfo.isLoading) {
+    if (tokenContract.isLoading) {
         return (
             <div className="bg-[#2a2a2f] rounded-xl border border-[#3a3a3f] p-6 animate-pulse">
                 <div className="h-6 w-40 bg-[#3a3a3f] rounded mb-6" />
@@ -199,11 +145,11 @@ const DepositPanel: React.FC = () => {
         );
     }
 
-    if (lockInfo.isError) {
+    if (tokenContract.isError) {
         return (
             <ErrorDisplay
-                error={lockInfo.error as Error & { code?: string }}
-                title="Error loading lock info for deposits"
+                error={tokenContract.error as Error & { code?: string }}
+                title="Error loading contract info"
                 onRetry={() => window.location.reload()}
             />
         );
@@ -211,92 +157,102 @@ const DepositPanel: React.FC = () => {
 
     return (
         <div className="bg-[#2a2a2f] rounded-xl border border-[#3a3a3f] p-6">
-            <h2 className="text-xl font-semibold mb-6 text-salmon">Deposit LP Tokens</h2>
+            <h2 className="text-xl font-semibold mb-6 text-salmon">Lock LP Tokens</h2>
 
-            <div className="space-y-6">
-                {/* Balance Info */}
-                <div className="bg-[#23232a] rounded-lg p-4 border border-[#3a3a3f]">
-                    <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm text-gray-3">Your LP Token Balance</span>
-                        <button
-                            onClick={handleMaxClick}
-                            className="text-xs text-salmon hover:text-salmon/80 transition-colors px-2 py-1 rounded bg-salmon/10 hover:bg-salmon/20"
-                        >
-                            Max
-                        </button>
-                    </div>
-                    <div className="text-lg font-mono font-bold text-gray-1">
-                        {userLPBalance ? formatEther(userLPBalance as bigint) : "0"} LP
-                    </div>
+            {error && (
+                <div className="mb-4">
+                    <ErrorDisplay
+                        error={error as Error & { code?: string }}
+                        title="Transaction failed"
+                        onRetry={() => { }}
+                    />
                 </div>
+            )}
 
-                {/* Deposit Form */}
-                <div className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-3 mb-2">
-                            Deposit Amount
-                        </label>
+            {isSuccess && (
+                <div className="mb-4 bg-green-500/10 border border-green-500/20 rounded-lg p-4">
+                    <div className="flex items-center gap-2 text-green-400">
+                        <span>✅</span>
+                        <span className="font-medium">LP tokens locked successfully!</span>
+                    </div>
+                    <p className="text-sm text-gray-3 mt-1">
+                        A new lock has been created. Check the All Locks panel to view it.
+                    </p>
+                </div>
+            )}
+
+            <div className="space-y-4">
+                <div>
+                    <label className="block text-sm font-medium text-gray-3 mb-2">
+                        Amount to Lock
+                    </label>
+                    <div className="relative">
                         <input
-                            type="number"
+                            type="text"
                             value={depositAmount}
                             onChange={(e) => setDepositAmount(e.target.value)}
                             placeholder="0.0"
-                            className="w-full bg-[#23232a] border border-[#3a3a3f] rounded-lg px-4 py-3 text-gray-1 font-mono focus:border-salmon focus:outline-none transition-colors"
+                            className="w-full px-4 py-3 pr-16 bg-[#23232a] border border-[#3a3a3f] rounded-lg text-gray-1 placeholder-gray-4 focus:outline-none focus:border-salmon transition-colors"
+                            disabled={isPending || isConfirming}
                         />
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="space-y-3">
-                        {needsApproval() && isValidAmount() && (
-                            <button
-                                onClick={handleApprove}
-                                disabled={isApproving || isApproveLoading}
-                                className="w-full bg-blue/10 hover:bg-blue/20 border border-blue/20 text-blue font-medium py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                {isApproving || isApproveLoading ? (
-                                    <span className="flex items-center justify-center gap-2">
-                                        <div className="w-4 h-4 border-2 border-blue/30 border-t-blue rounded-full animate-spin" />
-                                        Approving...
-                                    </span>
-                                ) : (
-                                    "1. Approve LP Tokens"
-                                )}
-                            </button>
-                        )}
-
                         <button
-                            onClick={handleDeposit}
-                            disabled={
-                                !isValidAmount() ||
-                                needsApproval() ||
-                                isDepositing ||
-                                isDepositLoading ||
-                                isApproving ||
-                                isApproveLoading
-                            }
-                            className="w-full bg-salmon/10 hover:bg-salmon/20 border border-salmon/20 text-salmon font-medium py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            onClick={handleMaxClick}
+                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-salmon hover:text-salmon/80 transition-colors px-2 py-1 bg-salmon/10 rounded"
+                            disabled={isPending || isConfirming}
                         >
-                            {isDepositing || isDepositLoading ? (
-                                <span className="flex items-center justify-center gap-2">
-                                    <div className="w-4 h-4 border-2 border-salmon/30 border-t-salmon rounded-full animate-spin" />
-                                    Depositing...
-                                </span>
-                            ) : needsApproval() ? (
-                                "2. Deposit LP Tokens"
-                            ) : (
-                                "Deposit LP Tokens"
-                            )}
+                            MAX
                         </button>
                     </div>
+                    <div className="flex justify-between text-xs text-gray-4 mt-1">
+                        <span>Balance: {userLPBalance ? formatEther(userLPBalance as bigint) : "0"}</span>
+                    </div>
+                </div>
 
-                    {/* Validation Messages */}
-                    {depositAmount && !isValidAmount() && (
-                        <div className="bg-error/10 border border-error/20 rounded-lg p-3">
-                            <div className="text-sm text-error">
-                                ⚠️ Invalid amount. Please enter a valid amount within your balance.
-                            </div>
-                        </div>
+                <div className="space-y-3">
+                    {needsApproval() ? (
+                        <button
+                            onClick={handleApprove}
+                            disabled={!isValidAmount() || isPending || isConfirming || isApproving}
+                            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+                        >
+                            {(isPending || isApproving) ? (
+                                <>
+                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    Approving...
+                                </>
+                            ) : (
+                                <>
+                                    <span>✓</span>
+                                    Approve LP Tokens
+                                </>
+                            )}
+                        </button>
+                    ) : (
+                        <button
+                            onClick={handleDeposit}
+                            disabled={!isValidAmount() || isPending || isConfirming || isDepositing}
+                            className="w-full bg-salmon hover:bg-salmon/90 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+                        >
+                            {(isPending || isConfirming || isDepositing) ? (
+                                <>
+                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    {isPending || isDepositing ? "Locking..." : "Processing..."}
+                                </>
+                            ) : (
+                                <>
+                                    <span>🔒</span>
+                                    Lock LP Tokens
+                                </>
+                            )}
+                        </button>
                     )}
+                </div>
+
+                <div className="text-xs text-gray-4 space-y-1">
+                    <div>• Creates a new lock with the specified amount</div>
+                    <div>• 30-day withdrawal timelock applies after triggering withdrawal</div>
+                    <div>• You can create multiple locks with different amounts</div>
+                    <div>• Each lock gets a unique ID for management</div>
                 </div>
             </div>
         </div>

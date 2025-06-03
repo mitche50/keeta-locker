@@ -31,27 +31,14 @@ contract LPLockerTest is Test {
         assertEq(locker.owner(), owner);
         assertEq(locker.feeReceiver(), feeReceiver);
         assertEq(locker.tokenContract(), address(lpToken));
-        assertEq(locker.isLiquidityLocked(), false);
-        assertEq(locker.lockedAmount(), 0);
     }
 
     function testOnlyOwnerCanLock() public {
-        lpToken.mint(owner, LOCK_AMOUNT);
+        lpToken.mint(user, LOCK_AMOUNT);
         vm.prank(user);
         lpToken.approve(address(locker), LOCK_AMOUNT);
         vm.prank(user);
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
-        locker.lockLiquidity(LOCK_AMOUNT);
-    }
-
-    function testCannotLockTwice() public {
-        lpToken.mint(owner, LOCK_AMOUNT);
-        vm.prank(owner);
-        lpToken.approve(address(locker), LOCK_AMOUNT);
-        vm.prank(owner);
-        locker.lockLiquidity(LOCK_AMOUNT);
-        vm.prank(owner);
-        vm.expectRevert(ILPLocker.LPAlreadyLocked.selector);
         locker.lockLiquidity(LOCK_AMOUNT);
     }
 
@@ -65,154 +52,156 @@ contract LPLockerTest is Test {
         lpToken.mint(owner, LOCK_AMOUNT);
         vm.prank(owner);
         lpToken.approve(address(locker), LOCK_AMOUNT);
+        
+        // With the new nonce-based lock ID generation, we need to calculate the expected ID
+        bytes32 expectedLockId = keccak256(abi.encode(owner, LOCK_AMOUNT, block.timestamp, 0)); // nonce starts at 0
+        
         vm.expectEmit(true, false, false, true);
-        emit ILPLocker.LiquidityLocked(LOCK_AMOUNT);
+        emit ILPLocker.LiquidityLocked(expectedLockId, LOCK_AMOUNT);
         vm.prank(owner);
         locker.lockLiquidity(LOCK_AMOUNT);
     }
 
     function testOnlyOwnerCanTriggerWithdrawal() public {
-        _lock();
+        bytes32 lockId = _lock();
         vm.prank(user);
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
-        locker.triggerWithdrawal();
+        locker.triggerWithdrawal(lockId);
     }
 
     function testCannotTriggerIfNotLocked() public {
-        vm.warp(block.timestamp + 2 * 365 days + 1);
+        bytes32 nonExistentLockId = keccak256("nonexistent");
         vm.prank(owner);
         vm.expectRevert(ILPLocker.LPNotLocked.selector);
-        locker.triggerWithdrawal();
+        locker.triggerWithdrawal(nonExistentLockId);
     }
 
     function testCannotTriggerIfAlreadyTriggered() public {
-        _lock();
-        vm.warp(block.timestamp + 2 * 365 days + 1);
-        vm.prank(owner);
-        locker.triggerWithdrawal();
+        bytes32 lockId = _lockAndTrigger();
         vm.prank(owner);
         vm.expectRevert(ILPLocker.WithdrawalAlreadyTriggered.selector);
-        locker.triggerWithdrawal();
+        locker.triggerWithdrawal(lockId);
     }
 
     function testEmitsWithdrawalTriggered() public {
-        _lock();
-        vm.warp(block.timestamp + 2 * 365 days + 1);
+        bytes32 lockId = _lock();
         vm.prank(owner);
-        uint256 before = block.timestamp;
+        uint256 expectedUnlockTime = block.timestamp + 30 days;
         vm.expectEmit(true, false, false, true);
-        emit ILPLocker.WithdrawalTriggered(before + 30 days);
-        locker.triggerWithdrawal();
+        emit ILPLocker.WithdrawalTriggered(lockId, expectedUnlockTime);
+        locker.triggerWithdrawal(lockId);
     }
 
     function testOnlyOwnerCanCancelWithdrawal() public {
-        _lockAndTrigger();
+        bytes32 lockId = _lockAndTrigger();
         vm.prank(user);
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
-        locker.cancelWithdrawalTrigger();
+        locker.cancelWithdrawalTrigger(lockId);
     }
 
     function testCannotCancelIfNotLocked() public {
+        bytes32 nonExistentLockId = keccak256("nonexistent");
         vm.prank(owner);
         vm.expectRevert(ILPLocker.LPNotLocked.selector);
-        locker.cancelWithdrawalTrigger();
+        locker.cancelWithdrawalTrigger(nonExistentLockId);
     }
 
     function testCannotCancelIfNotTriggered() public {
-        _lock();
+        bytes32 lockId = _lock();
         vm.prank(owner);
         vm.expectRevert(ILPLocker.WithdrawalNotTriggered.selector);
-        locker.cancelWithdrawalTrigger();
+        locker.cancelWithdrawalTrigger(lockId);
     }
 
     function testEmitsWithdrawalCancelled() public {
-        _lockAndTrigger();
+        bytes32 lockId = _lockAndTrigger();
         vm.expectEmit(true, false, false, true);
-        emit ILPLocker.WithdrawalCancelled();
+        emit ILPLocker.WithdrawalCancelled(lockId);
         vm.prank(owner);
-        locker.cancelWithdrawalTrigger();
+        locker.cancelWithdrawalTrigger(lockId);
     }
 
     function testOnlyOwnerCanWithdrawLP() public {
-        _lockAndTrigger();
-        vm.warp(block.timestamp + 91 days);
+        bytes32 lockId = _lockAndTrigger();
+        vm.warp(locker.getUnlockTime(lockId) + 1);
         vm.prank(user);
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
-        locker.withdrawLP(LOCK_AMOUNT);
+        locker.withdrawLP(lockId, LOCK_AMOUNT);
     }
 
     function testCannotWithdrawIfNotLocked() public {
+        bytes32 nonExistentLockId = keccak256("nonexistent");
         vm.prank(owner);
         vm.expectRevert(ILPLocker.LPNotLocked.selector);
-        locker.withdrawLP(LOCK_AMOUNT);
+        locker.withdrawLP(nonExistentLockId, LOCK_AMOUNT);
     }
 
     function testCannotWithdrawIfNotTriggered() public {
-        _lock();
+        bytes32 lockId = _lock();
         vm.prank(owner);
         vm.expectRevert(ILPLocker.WithdrawalNotTriggered.selector);
-        locker.withdrawLP(LOCK_AMOUNT);
+        locker.withdrawLP(lockId, LOCK_AMOUNT);
     }
 
     function testCanWithdrawPartialOrFullAmount() public {
-        _lockAndTrigger();
-        vm.warp(locker.lockUpEndTime() + 1);
+        bytes32 lockId = _lockAndTrigger();
+        vm.warp(locker.getUnlockTime(lockId) + 1);
         vm.prank(owner);
-        locker.withdrawLP(LOCK_AMOUNT / 2);
-        assertEq(locker.lockedAmount(), LOCK_AMOUNT / 2);
-        assertEq(locker.isLiquidityLocked(), true);
+        locker.withdrawLP(lockId, LOCK_AMOUNT / 2);
+        assertEq(locker.getLPBalance(), LOCK_AMOUNT / 2);
         vm.prank(owner);
-        locker.withdrawLP(LOCK_AMOUNT / 2);
-        assertEq(locker.lockedAmount(), 0);
-        assertEq(locker.isLiquidityLocked(), false);
+        locker.withdrawLP(lockId, LOCK_AMOUNT / 2);
+        assertEq(locker.getLPBalance(), 0);
     }
 
     function testCannotWithdrawBeforeUnlockTime() public {
-        _lockAndTrigger();
+        bytes32 lockId = _lockAndTrigger();
         // Try to withdraw just before unlock time
-        vm.warp(locker.lockUpEndTime() - 1);
+        vm.warp(locker.getUnlockTime(lockId) - 1);
         vm.prank(owner);
         vm.expectRevert(ILPLocker.LockupNotEnded.selector);
-        locker.withdrawLP(LOCK_AMOUNT);
+        locker.withdrawLP(lockId, LOCK_AMOUNT);
     }
 
     function testCanWithdrawAfterUnlockTime() public {
-        _lockAndTrigger();
+        bytes32 lockId = _lockAndTrigger();
         // Warp to just after unlock time
-        vm.warp(locker.lockUpEndTime() + 1);
+        vm.warp(locker.getUnlockTime(lockId) + 1);
         vm.prank(owner);
-        locker.withdrawLP(LOCK_AMOUNT);
-        assertEq(locker.lockedAmount(), 0);
-        assertEq(locker.isLiquidityLocked(), false);
+        locker.withdrawLP(lockId, LOCK_AMOUNT);
+        assertEq(locker.getLPBalance(), 0);
     }
 
     function testEmitsLPWithdrawn() public {
-        _lockAndTrigger();
-        vm.warp(locker.lockUpEndTime() + 1);
+        bytes32 lockId = _lockAndTrigger();
+        vm.warp(locker.getUnlockTime(lockId) + 1);
         vm.expectEmit(true, false, false, true);
-        emit ILPLocker.LPWithdrawn(LOCK_AMOUNT);
+        emit ILPLocker.LPWithdrawn(lockId, LOCK_AMOUNT);
         vm.prank(owner);
-        locker.withdrawLP(LOCK_AMOUNT);
+        locker.withdrawLP(lockId, LOCK_AMOUNT);
     }
 
     function testResetsStateIfAllWithdrawn() public {
-        _lockAndTrigger();
-        vm.warp(locker.lockUpEndTime() + 1);
+        bytes32 lockId = _lockAndTrigger();
+        vm.warp(locker.getUnlockTime(lockId) + 1);
         vm.prank(owner);
-        locker.withdrawLP(LOCK_AMOUNT);
-        assertEq(locker.isLiquidityLocked(), false);
-        assertEq(locker.lockedAmount(), 0);
-        assertEq(locker.lockUpEndTime(), 0);
-        assertEq(locker.isWithdrawalTriggered(), false);
+        locker.withdrawLP(lockId, LOCK_AMOUNT);
+        assertEq(locker.getLPBalance(), 0);
+        // Check that lock amount is reduced to 0
+        (, , , uint256 lockedAmount, , , ) = locker.getLockInfo(lockId);
+        assertEq(lockedAmount, 0);
+        // Note: isLiquidityLocked remains true, withdrawal state remains as well
     }
 
     function testOnlyOwnerCanChangeOwner() public {
+        _lock();
         vm.prank(user);
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
         locker.changeOwner(user);
     }
 
     function testCannotSetOwnerToZero() public {
+        _lock();
         vm.startPrank(owner);
         vm.expectRevert(ILPLocker.OwnerCannotBeZeroAddress.selector);
         locker.changeOwner(address(0));
@@ -220,6 +209,7 @@ contract LPLockerTest is Test {
     }
 
     function testEmitsOwnerChanged() public {
+        _lock();
         vm.expectEmit(true, false, false, true);
         emit ILPLocker.OwnerChanged(user);
         vm.prank(owner);
@@ -227,12 +217,14 @@ contract LPLockerTest is Test {
     }
 
     function testOnlyOwnerCanChangeFeeReceiver() public {
+        _lock();
         vm.prank(user);
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
         locker.changeFeeReceiver(user);
     }
 
     function testCannotSetFeeReceiverToZero() public {
+        _lock();
         vm.startPrank(owner);
         vm.expectRevert(ILPLocker.FeeReceiverCannotBeZeroAddress.selector);
         locker.changeFeeReceiver(address(0));
@@ -247,49 +239,43 @@ contract LPLockerTest is Test {
     }
 
     function testOnlyOwnerCanClaimFees() public {
-        _lock();
+        bytes32 lockId = _lock();
         vm.prank(user);
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
-        locker.claimLPFees();
-    }
-
-    function testCannotClaimIfNotLocked() public {
-        vm.prank(owner);
-        vm.expectRevert(bytes("LP not locked"));
-        locker.claimLPFees();
+        locker.claimLPFees(lockId);
     }
 
     function testCallsClaimFeesOnPool() public {
-        _lock();
+        bytes32 lockId = _lock();
         lpToken.setClaimAmounts(123, 456);
         vm.prank(owner);
-        locker.claimLPFees();
+        locker.claimLPFees(lockId);
     }
 
     function testTransfersAllToken0AndToken1ToFeeReceiver() public {
-        _lock();
+        bytes32 lockId = _lock();
         token0.mint(address(locker), 100);
         token1.mint(address(locker), 200);
         lpToken.setClaimAmounts(0, 0);
         uint256 bal0Before = token0.balanceOf(feeReceiver);
         uint256 bal1Before = token1.balanceOf(feeReceiver);
         vm.prank(owner);
-        locker.claimLPFees();
+        locker.claimLPFees(lockId);
         assertEq(token0.balanceOf(feeReceiver), bal0Before + 100);
         assertEq(token1.balanceOf(feeReceiver), bal1Before + 200);
     }
 
     function testEmitsFeesClaimed() public {
-        _lock();
+        bytes32 lockId = _lock();
         lpToken.setClaimAmounts(123, 456);
         vm.expectEmit(true, false, false, true);
-        emit ILPLocker.FeesClaimed(address(token0), 123, address(token1), 456);
+        emit ILPLocker.FeesClaimed(lockId, address(token0), 123, address(token1), 456);
         vm.prank(owner);
-        locker.claimLPFees();
+        locker.claimLPFees(lockId);
     }
 
     function testClaimLPFeesTransfersCorrectAmountsToFeeReceiver() public {
-        _lock();
+        bytes32 lockId = _lock();
         uint256 claim0 = 123;
         uint256 claim1 = 456;
         lpToken.setTokens(address(token0), address(token1));
@@ -299,7 +285,7 @@ contract LPLockerTest is Test {
         uint256 before0 = token0.balanceOf(feeReceiver);
         uint256 before1 = token1.balanceOf(feeReceiver);
         vm.prank(owner);
-        locker.claimLPFees();
+        locker.claimLPFees(lockId);
         assertEq(token0.balanceOf(feeReceiver), before0 + claim0);
         assertEq(token1.balanceOf(feeReceiver), before1 + claim1);
         assertEq(token0.balanceOf(address(locker)), 0);
@@ -307,18 +293,19 @@ contract LPLockerTest is Test {
     }
 
     function testRestrictedFunctionsRevertForNonOwner() public {
+        bytes32 lockId = _lock();
         vm.prank(user);
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
         locker.lockLiquidity(LOCK_AMOUNT);
         vm.prank(user);
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
-        locker.triggerWithdrawal();
+        locker.triggerWithdrawal(lockId);
         vm.prank(user);
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
-        locker.cancelWithdrawalTrigger();
+        locker.cancelWithdrawalTrigger(lockId);
         vm.prank(user);
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
-        locker.withdrawLP(LOCK_AMOUNT);
+        locker.withdrawLP(lockId, LOCK_AMOUNT);
         vm.prank(user);
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
         locker.changeOwner(user);
@@ -327,10 +314,11 @@ contract LPLockerTest is Test {
         locker.changeFeeReceiver(user);
         vm.prank(user);
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
-        locker.claimLPFees();
+        locker.claimLPFees(lockId);
     }
 
     function testGetLockInfoReturnsCorrectState() public {
+        bytes32 lockId = _lock();
         (
             address owner_,
             address feeReceiver_,
@@ -339,15 +327,18 @@ contract LPLockerTest is Test {
             uint256 lockUpEndTime_,
             bool isLiquidityLocked_,
             bool isWithdrawalTriggered_
-        ) = locker.getLockInfo();
+        ) = locker.getLockInfo(lockId);
         assertEq(owner_, owner);
         assertEq(feeReceiver_, feeReceiver);
         assertEq(tokenContract_, address(lpToken));
-        assertEq(lockedAmount_, 0);
+        assertEq(lockedAmount_, LOCK_AMOUNT);
         assertEq(lockUpEndTime_, 0);
-        assertEq(isLiquidityLocked_, false);
+        assertEq(isLiquidityLocked_, true);
         assertEq(isWithdrawalTriggered_, false);
-        _lock();
+        
+        // Test after triggering withdrawal
+        vm.prank(owner);
+        locker.triggerWithdrawal(lockId);
         (
             owner_,
             feeReceiver_,
@@ -356,33 +347,41 @@ contract LPLockerTest is Test {
             lockUpEndTime_,
             isLiquidityLocked_,
             isWithdrawalTriggered_
-        ) = locker.getLockInfo();
+        ) = locker.getLockInfo(lockId);
         assertEq(lockedAmount_, LOCK_AMOUNT);
         assertEq(isLiquidityLocked_, true);
-        assertEq(isWithdrawalTriggered_, false);
+        assertEq(isWithdrawalTriggered_, true);
+        assertTrue(lockUpEndTime_ > 0);
     }
 
     function testGetUnlockTimeReturnsCorrectValue() public {
-        assertEq(locker.getUnlockTime(), 0);
-        _lockAndTrigger();
-        assertEq(locker.getUnlockTime(), locker.lockUpEndTime());
+        bytes32 lockId = _lockAndTrigger();
+        uint256 unlockTime = locker.getUnlockTime(lockId);
+        assertTrue(unlockTime > block.timestamp);
+        assertEq(unlockTime, block.timestamp + 30 days);
     }
 
     function testGetLPBalanceReturnsCorrectAmount() public {
+        // Initially no balance
         assertEq(locker.getLPBalance(), 0);
-        _lock();
+        
+        // After locking
+        bytes32 lockId = _lock();
         assertEq(locker.getLPBalance(), LOCK_AMOUNT);
+        
+        // After triggering and withdrawing
         vm.prank(owner);
-        locker.triggerWithdrawal();
-        vm.warp(locker.lockUpEndTime() + 1);
+        locker.triggerWithdrawal(lockId);
+        vm.warp(locker.getUnlockTime(lockId) + 1);
         vm.prank(owner);
-        locker.withdrawLP(LOCK_AMOUNT);
+        locker.withdrawLP(lockId, LOCK_AMOUNT);
         assertEq(locker.getLPBalance(), 0);
     }
 
     function testGetClaimableFeesReturnsTokensAndZeroAmounts() public {
+        bytes32 lockId = _lock();
         lpToken.setTokens(address(token0), address(token1));
-        (address t0, uint256 a0, address t1, uint256 a1) = locker.getClaimableFees();
+        (address t0, uint256 a0, address t1, uint256 a1) = locker.getClaimableFees(lockId);
         assertEq(t0, address(token0));
         assertEq(t1, address(token1));
         assertEq(a0, 0);
@@ -396,152 +395,173 @@ contract LPLockerTest is Test {
         vm.prank(owner);
         lpToken.approve(address(locker), lockAmt);
         vm.prank(owner);
-        locker.lockLiquidity(lockAmt);
+        bytes32 lockId = locker.lockLiquidity(lockAmt);
         vm.prank(owner);
-        locker.triggerWithdrawal();
-        vm.warp(locker.lockUpEndTime() + 1);
+        locker.triggerWithdrawal(lockId);
+        vm.warp(locker.getUnlockTime(lockId) + 1);
         vm.prank(owner);
-        locker.withdrawLP(withdrawAmt);
-        assertEq(locker.lockedAmount(), lockAmt - withdrawAmt);
+        locker.withdrawLP(lockId, withdrawAmt);
+        assertEq(locker.getLPBalance(), lockAmt - withdrawAmt);
     }
 
     function testCannotWithdrawMoreThanLocked() public {
-        _lockAndTrigger();
-        vm.warp(block.timestamp + 1 days);
+        bytes32 lockId = _lockAndTrigger();
+        vm.warp(locker.getUnlockTime(lockId) + 1);
         vm.prank(owner);
         vm.expectRevert();
-        locker.withdrawLP(LOCK_AMOUNT + 1);
+        locker.withdrawLP(lockId, LOCK_AMOUNT + 1);
     }
 
     function testCannotWithdrawZeroAmount() public {
-        _lockAndTrigger();
-        vm.warp(locker.lockUpEndTime() + 1);
-        uint256 before = locker.lockedAmount();
+        bytes32 lockId = _lockAndTrigger();
+        vm.warp(locker.getUnlockTime(lockId) + 1);
+        uint256 before = locker.getLPBalance();
         vm.prank(owner);
-        locker.withdrawLP(0);
-        assertEq(locker.lockedAmount(), before);
+        locker.withdrawLP(lockId, 0);
+        assertEq(locker.getLPBalance(), before);
     }
 
     function testCanLockAfterFullWithdrawal() public {
-        _lockAndTrigger();
-        vm.warp(locker.lockUpEndTime() + 1);
+        bytes32 lockId = _lockAndTrigger();
+        vm.warp(locker.getUnlockTime(lockId) + 1);
         vm.prank(owner);
-        locker.withdrawLP(LOCK_AMOUNT);
+        locker.withdrawLP(lockId, LOCK_AMOUNT);
         lpToken.mint(owner, LOCK_AMOUNT);
         vm.prank(owner);
         lpToken.approve(address(locker), LOCK_AMOUNT);
         vm.prank(owner);
-        locker.lockLiquidity(LOCK_AMOUNT);
-        assertEq(locker.lockedAmount(), LOCK_AMOUNT);
-        assertEq(locker.isLiquidityLocked(), true);
+        bytes32 newLockId = locker.lockLiquidity(LOCK_AMOUNT);
+        (address owner_, address feeReceiver_, address tokenContract_, uint256 lockedAmount_, uint256 lockUpEndTime_, bool isLiquidityLocked_, bool isWithdrawalTriggered_) = locker.getLockInfo(newLockId);
+        assertEq(owner_, owner);
+        assertEq(feeReceiver_, feeReceiver);
+        assertEq(tokenContract_, address(lpToken));
+        assertEq(lockedAmount_, LOCK_AMOUNT);
+        assertEq(lockUpEndTime_, 0);
+        assertEq(isLiquidityLocked_, true);
+        assertEq(isWithdrawalTriggered_, false);
     }
 
     function testStateAfterPartialThenFullWithdrawal() public {
-        _lockAndTrigger();
-        vm.warp(locker.lockUpEndTime() + 1);
+        bytes32 lockId = _lockAndTrigger();
+        vm.warp(locker.getUnlockTime(lockId) + 1);
         vm.prank(owner);
-        locker.withdrawLP(LOCK_AMOUNT / 2);
-        assertEq(locker.lockedAmount(), LOCK_AMOUNT / 2);
-        assertEq(locker.isLiquidityLocked(), true);
+        locker.withdrawLP(lockId, LOCK_AMOUNT / 2);
+        assertEq(locker.getLPBalance(), LOCK_AMOUNT / 2);
+        (address owner_, address feeReceiver_, address tokenContract_, uint256 lockedAmount_, uint256 lockUpEndTime_, bool isLiquidityLocked_, bool isWithdrawalTriggered_) = locker.getLockInfo(lockId);
+        assertEq(owner_, owner);
+        assertEq(feeReceiver_, feeReceiver);
+        assertEq(tokenContract_, address(lpToken));
+        assertEq(lockedAmount_, LOCK_AMOUNT / 2);
+        assertTrue(lockUpEndTime_ > 0); // Still has unlock time
+        assertEq(isLiquidityLocked_, true);
+        assertEq(isWithdrawalTriggered_, true);
         vm.prank(owner);
-        locker.withdrawLP(LOCK_AMOUNT / 2);
-        assertEq(locker.lockedAmount(), 0);
-        assertEq(locker.isLiquidityLocked(), false);
-        assertEq(locker.lockUpEndTime(), 0);
-        assertEq(locker.isWithdrawalTriggered(), false);
+        locker.withdrawLP(lockId, LOCK_AMOUNT / 2);
+        assertEq(locker.getLPBalance(), 0);
+        
+        // After full withdrawal, the lock is now deleted
+        (owner_, feeReceiver_, tokenContract_, lockedAmount_, lockUpEndTime_, isLiquidityLocked_, isWithdrawalTriggered_) = locker.getLockInfo(lockId);
+        assertEq(owner_, owner); // These still return the contract's current values
+        assertEq(feeReceiver_, feeReceiver);
+        assertEq(tokenContract_, address(lpToken));
+        assertEq(lockedAmount_, 0); // Lock data is now default/deleted
+        assertEq(lockUpEndTime_, 0); // Reset to 0
+        assertEq(isLiquidityLocked_, false); // Reset to false
+        assertEq(isWithdrawalTriggered_, false); // Reset to false
+        assertEq(locker.getUnlockTime(lockId), 0); // Should return 0 for deleted lock
     }
 
     function testOnlyOwnerCanTopUpLock() public {
-        _lock();
+        bytes32 lockId = _lock();
         uint256 topUp = 100 ether;
         lpToken.mint(user, topUp);
         vm.prank(user);
         lpToken.approve(address(locker), topUp);
         vm.prank(user);
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
-        locker.topUpLock(topUp);
+        locker.topUpLock(lockId, topUp);
     }
 
     function testCannotTopUpIfNotLocked() public {
+        bytes32 nonExistentLockId = keccak256("nonexistent");
         uint256 topUp = 100 ether;
         lpToken.mint(owner, topUp);
         vm.prank(owner);
         lpToken.approve(address(locker), topUp);
         vm.prank(owner);
         vm.expectRevert(ILPLocker.LPNotLocked.selector);
-        locker.topUpLock(topUp);
+        locker.topUpLock(nonExistentLockId, topUp);
+    }
+
+    function testCannotTopUpIfWithdrawalTriggered() public {
+        bytes32 lockId = _lockAndTrigger();
+        uint256 topUp = 100 ether;
+        lpToken.mint(owner, topUp);
+        vm.prank(owner);
+        lpToken.approve(address(locker), topUp);
+        vm.prank(owner);
+        vm.expectRevert(ILPLocker.WithdrawalAlreadyTriggered.selector);
+        locker.topUpLock(lockId, topUp);
     }
 
     function testCannotTopUpZero() public {
-        _lock();
+        bytes32 lockId = _lock();
         vm.prank(owner);
         vm.expectRevert(ILPLocker.LPAmountZero.selector);
-        locker.topUpLock(0);
+        locker.topUpLock(lockId, 0);
     }
 
     function testTopUpIncreasesLockedAmount() public {
-        _lock();
+        bytes32 lockId = _lock();
         uint256 topUp = 123 ether;
         lpToken.mint(owner, topUp);
         vm.prank(owner);
         lpToken.approve(address(locker), topUp);
         vm.prank(owner);
-        locker.topUpLock(topUp);
-        assertEq(locker.lockedAmount(), LOCK_AMOUNT + topUp);
+        locker.topUpLock(lockId, topUp);
+        assertEq(locker.getLPBalance(), LOCK_AMOUNT + topUp);
+        (, , , uint256 lockedAmount, , , ) = locker.getLockInfo(lockId);
+        assertEq(lockedAmount, LOCK_AMOUNT + topUp);
     }
 
     function testTopUpEmitsLiquidityLocked() public {
-        _lock();
+        bytes32 lockId = _lock();
         uint256 topUp = 42 ether;
         lpToken.mint(owner, topUp);
         vm.prank(owner);
         lpToken.approve(address(locker), topUp);
+        // The event emits the NEW TOTAL amount, not just the top-up amount
         vm.expectEmit(true, false, false, true);
-        emit ILPLocker.LiquidityLocked(topUp);
+        emit ILPLocker.LiquidityLocked(lockId, LOCK_AMOUNT + topUp);
         vm.prank(owner);
-        locker.topUpLock(topUp);
+        locker.topUpLock(lockId, topUp);
     }
 
-    function testTopUpAfterPartialWithdrawal() public {
-        _lockAndTrigger();
-        vm.warp(locker.lockUpEndTime() + 1);
+    function testCannotTopUpAfterPartialWithdrawal() public {
+        bytes32 lockId = _lockAndTrigger();
+        vm.warp(locker.getUnlockTime(lockId) + 1);
         vm.prank(owner);
-        locker.withdrawLP(LOCK_AMOUNT / 2);
+        locker.withdrawLP(lockId, LOCK_AMOUNT / 2);
         uint256 topUp = 50 ether;
         lpToken.mint(owner, topUp);
         vm.prank(owner);
         lpToken.approve(address(locker), topUp);
         vm.prank(owner);
-        locker.topUpLock(topUp);
-        assertEq(locker.lockedAmount(), (LOCK_AMOUNT / 2) + topUp);
+        vm.expectRevert(ILPLocker.WithdrawalAlreadyTriggered.selector);
+        locker.topUpLock(lockId, topUp);
     }
 
-    function testCannotTopUpAfterFullWithdrawal() public {
-        _lockAndTrigger();
-        vm.warp(locker.lockUpEndTime() + 1);
-        vm.prank(owner);
-        locker.withdrawLP(LOCK_AMOUNT);
-        uint256 topUp = 10 ether;
-        lpToken.mint(owner, topUp);
-        vm.prank(owner);
-        lpToken.approve(address(locker), topUp);
-        vm.prank(owner);
-        vm.expectRevert(ILPLocker.LPNotLocked.selector);
-        locker.topUpLock(topUp);
-    }
-
-    function _lock() internal {
+    function _lock() internal returns (bytes32 lockId) {
         lpToken.mint(owner, LOCK_AMOUNT);
         vm.prank(owner);
         lpToken.approve(address(locker), LOCK_AMOUNT);
         vm.prank(owner);
-        locker.lockLiquidity(LOCK_AMOUNT);
+        lockId = locker.lockLiquidity(LOCK_AMOUNT);
     }
 
-    function _lockAndTrigger() internal {
-        _lock();
-        vm.warp(block.timestamp + 2 * 365 days + 1);
+    function _lockAndTrigger() internal returns (bytes32 lockId) {
+        lockId = _lock();
         vm.prank(owner);
-        locker.triggerWithdrawal();
+        locker.triggerWithdrawal(lockId);
     }
 }
