@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import "./IAerodromePool.sol";
+
 /**
  * @title ILPLocker
  * @notice Interface for LPLocker events, custom errors, and external functions
@@ -34,6 +36,9 @@ interface ILPLocker {
     /// @notice Emitted when the lock is fully withdrawn and deleted
     /// @param lockId The ID of the lock
     event LockFullyWithdrawn(bytes32 indexed lockId);
+    /// @notice Emitted when claimable fees are updated
+    /// @param lockId The ID of the lock
+    event ClaimableFeesUpdated(bytes32 indexed lockId);
 
     /// @notice Thrown when attempting to set owner to the zero address
     error CannotAssignOwnerToAddressZero();
@@ -61,6 +66,9 @@ interface ILPLocker {
     error TokenContractCannotBeZeroAddress();
     /// @notice Thrown when attempting to recover the locked LP token
     error CannotRecoverLPToken();
+    /// @notice Thrown when the LP token doesn't support fee updates
+    error UpdateNotSupported();
+
     /**
      * @notice Locks a specified amount of LP tokens in the contract
      * @dev Only callable by the owner. Can only be called once until all tokens are withdrawn.
@@ -112,6 +120,14 @@ interface ILPLocker {
     function claimLPFees(bytes32 lockId) external;
 
     /**
+     * @notice Updates the claimable fees by triggering fee tracking update
+     * @dev Only callable by the owner when liquidity is locked. Triggers _updateFor() in Aerodrome contracts.
+     * @param lockId The ID of the lock
+     * @custom:error LPNotLocked if not locked, UpdateNotSupported if LP doesn't support updates
+     */
+    function updateClaimableFees(bytes32 lockId) external;
+
+    /**
      * @notice Returns all relevant lock state information for monitoring
      * @return owner_ The current owner
      * @return feeReceiver_ The current fee receiver
@@ -148,10 +164,9 @@ interface ILPLocker {
     function getUnlockTime(bytes32 lockId) external view returns (uint256 lockUpEndTime_);
 
     /**
-     * @notice Returns the amount of fees claimable from the Aerodrome LP pool for a given lock 
-     *         as of the last time the `_updateFor` function was called on the Aerodrome LP pool.
+     * @notice Returns the amount of fees claimable from the Aerodrome LP pool for a given lock.
+     * @dev This reads the current claimable amounts directly from the pool contract.
      * @param lockId The ID of the lock
-     * @dev Returns token0, amount0, token1, amount1 as would be claimable by claimFees()
      * @return token0 The address of token0 in the LP
      * @return amount0 The amount of token0 claimable
      * @return token1 The address of token1 in the LP
@@ -161,6 +176,29 @@ interface ILPLocker {
         external
         view
         returns (address token0, uint256 amount0, address token1, uint256 amount1);
+
+    /**
+     * @notice Returns the total accumulated fees (based on index difference) for a given lock
+     * @dev Total accumulated = (current global index - user's last index) * user's LP balance / total supply
+     * @param lockId The ID of the lock
+     * @return token0 The address of token0 in the LP
+     * @return totalAmount0 The total amount of token0 that has accumulated since last update
+     * @return token1 The address of token1 in the LP
+     * @return totalAmount1 The total amount of token1 that has accumulated since last update
+     */
+    function getTotalAccumulatedFees(bytes32 lockId)
+        external
+        view
+        returns (address token0, uint256 totalAmount0, address token1, uint256 totalAmount1);
+
+    /**
+     * @notice External view function to calculate index-based fees (for try-catch)
+     * @dev This needs to be external to be called with try-catch. Returns 0,0 if LP doesn't support index-based fees.
+     * @param pool The Aerodrome pool interface
+     * @return totalAmount0 The total amount of token0 accumulated
+     * @return totalAmount1 The total amount of token1 accumulated
+     */
+    function _calculateIndexBasedFeesView(IAerodromePool pool) external view returns (uint256 totalAmount0, uint256 totalAmount1);
 
     /**
      * @notice Tops up the locked LP tokens with additional amount

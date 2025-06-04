@@ -301,7 +301,7 @@ contract LPLockerTest is Test {
 
     function testCallsClaimFeesOnPool() public {
         bytes32 lockId = _lock();
-        lpToken.setClaimAmounts(123, 456);
+        lpToken.setTokens(address(token0), address(token1));
         vm.prank(owner);
         locker.claimLPFees(lockId);
     }
@@ -321,6 +321,7 @@ contract LPLockerTest is Test {
 
     function testEmitsFeesClaimed() public {
         bytes32 lockId = _lock();
+        lpToken.setTokens(address(token0), address(token1));
         lpToken.setClaimAmounts(123, 456);
         vm.expectEmit(true, false, false, true);
         emit ILPLocker.FeesClaimed(lockId, address(token0), 123, address(token1), 456);
@@ -600,6 +601,83 @@ contract LPLockerTest is Test {
         vm.prank(owner);
         vm.expectRevert(ILPLocker.WithdrawalAlreadyTriggered.selector);
         locker.topUpLock(lockId, topUp);
+    }
+
+    function testGetTotalAccumulatedFeesCalculatesCorrectly() public {
+        // Lock some liquidity
+        vm.startPrank(owner);
+        lpToken.mint(owner, 1000 ether);
+        lpToken.approve(address(locker), 1000 ether);
+        bytes32 lockId = locker.lockLiquidity(1000 ether);
+        
+        // Set up mock indices to simulate fee accumulation
+        lpToken.setGlobalIndices(1000, 2000);  // Current global indices
+        lpToken.setUserIndices(address(locker), 500, 1000);  // User's last indices
+        lpToken._setTotalSupply(10000 ether);  // Set total supply
+        
+        // Calculate expected fees: (globalIndex - userIndex) * userBalance / 1e18
+        // userBalance = 1000 ether = 1000 * 1e18
+        // Token0: (1000 - 500) * (1000 * 1e18) / 1e18 = 500 * 1000 = 500000
+        // Token1: (2000 - 1000) * (1000 * 1e18) / 1e18 = 1000 * 1000 = 1000000
+        
+        (address token0, uint256 amount0, address token1, uint256 amount1) 
+            = locker.getTotalAccumulatedFees(lockId);
+        
+        assertEq(token0, lpToken.token0());
+        assertEq(token1, lpToken.token1());
+        assertEq(amount0, 500000);  // 500 * 1000
+        assertEq(amount1, 1000000); // 1000 * 1000
+        vm.stopPrank();
+    }
+
+    function testUpdateClaimableFeesUpdatesIndices() public {
+        bytes32 lockId = _lock();
+        
+        // Set up initial indices - user has old indices, global has moved forward
+        lpToken.setGlobalIndices(2000, 3000);  // New global indices
+        lpToken.setUserIndices(address(locker), 1000, 1500);  // Old user indices
+        
+        // Call updateClaimableFees
+        vm.expectEmit(true, false, false, true);
+        emit ILPLocker.ClaimableFeesUpdated(lockId);
+        vm.prank(owner);
+        locker.updateClaimableFees(lockId);
+        
+        // Verify that user indices were updated to match global indices
+        assertEq(lpToken.supplyIndex0(address(locker)), 2000);
+        assertEq(lpToken.supplyIndex1(address(locker)), 3000);
+    }
+
+    function testOnlyOwnerCanUpdateClaimableFees() public {
+        bytes32 lockId = _lock();
+        vm.prank(user);
+        vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
+        locker.updateClaimableFees(lockId);
+    }
+
+    function testCannotUpdateFeesIfNotLocked() public {
+        bytes32 nonExistentLockId = keccak256("nonexistent");
+        vm.prank(owner);
+        vm.expectRevert(ILPLocker.LPNotLocked.selector);
+        locker.updateClaimableFees(nonExistentLockId);
+    }
+
+    function testClaimLPFeesUpdatesBeforeClaiming() public {
+        bytes32 lockId = _lock();
+        
+        // Set up initial state - user has old indices
+        lpToken.setGlobalIndices(2000, 3000);  // New global indices
+        lpToken.setUserIndices(address(locker), 1000, 1500);  // Old user indices
+        lpToken.setTokens(address(token0), address(token1));
+        lpToken.setClaimAmounts(100, 200);
+        
+        // Claim fees - this should update indices first, then claim
+        vm.prank(owner);
+        locker.claimLPFees(lockId);
+        
+        // Verify that user indices were updated during the claim process
+        assertEq(lpToken.supplyIndex0(address(locker)), 2000);
+        assertEq(lpToken.supplyIndex1(address(locker)), 3000);
     }
 
     function _lock() internal returns (bytes32 lockId) {

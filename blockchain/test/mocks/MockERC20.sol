@@ -11,7 +11,7 @@ contract MockERC20 is IERC20 {
     mapping(address => uint256) public override balanceOf;
     mapping(address => mapping(address => uint256)) public override allowance;
 
-    function transfer(address to, uint256 amount) external override returns (bool) {
+    function transfer(address to, uint256 amount) external virtual override returns (bool) {
         require(balanceOf[msg.sender] >= amount, "Insufficient");
         balanceOf[msg.sender] -= amount;
         balanceOf[to] += amount;

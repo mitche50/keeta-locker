@@ -1,54 +1,103 @@
-# React + TypeScript + Vite
+# LPLocker Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Modern React dashboard for managing Aerodrome LP token locks with time-based withdrawal mechanisms.
 
-Currently, two official plugins are available:
+## 🚀 Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Multi-Lock Management**: View and manage multiple independent LP locks
+- **Real-time Updates**: Live blockchain data with 2-5 second refresh intervals
+- **Dual Fee Tracking**: Monitor both claimable and accumulated fees
+- **Blockchain Time Sync**: Uses actual blockchain timestamps for accurate unlock times
+- **Responsive Design**: Clean, modern interface optimized for desktop and mobile
+- **Wallet Integration**: RainbowKit with MetaMask, WalletConnect, and other wallets
 
-## Expanding the ESLint configuration
+## 🛠️ Tech Stack
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- **React 18** with TypeScript
+- **Vite** for fast development and building
+- **Wagmi v2** for Ethereum interactions
+- **RainbowKit** for wallet connections
+- **Tailwind CSS** for styling
+- **React Hot Toast** for notifications
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
+## 🏁 Quick Start
+
+```bash
+# Install dependencies
+bun install
+
+# Start development server
+bun run dev
+
+# Build for production
+bun run build
+
+# Preview production build
+bun run preview
+```
+
+## 🔧 Configuration
+
+The frontend automatically connects to deployed contracts based on the network:
+
+```typescript
+// src/config.ts
+export const CONTRACT_ADDRESSES = {
+    [BASE_MAINNET.id]: {
+        lpLocker: "0xYourProductionAddress",
+        lpToken: "0xYourAerodromeLPToken",
     },
-  },
-})
+    [ANVIL_LOCAL.id]: {
+        lpLocker: "0x09635F643e140090A9A8Dcd712eD6285858ceBef",
+        lpToken: "0xa85233C63b9Ee964Add6F2cffe00Fd84eb32338f",
+    },
+};
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 📱 Components Overview
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+- **AllLocksPanel**: Main dashboard showing all locks with management options
+- **DepositPanel**: Create new LP locks with amount input and approval flow
+- **ClaimableFeesPanel**: Monitor and claim both types of fees with update functionality  
+- **LockInfoPanel**: Detailed view of individual lock information
+- **LPBalancePanel**: Display total LP balance and contract information
+- **EmergencyRecoveryPanel**: Recover accidentally sent tokens (owner only)
 
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
+## 🔗 Wallet Connection
+
+The app supports multiple wallet connections through RainbowKit:
+- MetaMask
+- WalletConnect
+- Coinbase Wallet
+- Rainbow Wallet
+- And more...
+
+## 🌐 Network Support
+
+- **Base Mainnet**: Production Aerodrome LP tokens
+- **Anvil Local**: Development with mock LP tokens
+
+## 🎨 Styling
+
+Built with Tailwind CSS using a custom dark theme:
+- **Salmon** (#ff6b6b) - Primary accent color
+- **Dark grays** - Modern dark theme throughout
+- **Responsive design** - Works on all screen sizes
+
+## 📦 Build & Deploy
+
+```bash
+# Production build
+bun run build
+
+# Deploy to Vercel
+vercel --prod
+
+# Or deploy build folder to any static host
 ```
+
+The build outputs to `dist/` and can be deployed to:
+- Vercel (recommended)
+- Netlify
+- AWS S3 + CloudFront
+- Any static hosting service

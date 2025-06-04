@@ -98,6 +98,73 @@ contract LPLocker is ILPLocker, Ownable2Step {
         return (token0, amount0, token1, amount1);
     }
 
+    /// @notice Returns the total accumulated fees (based on index difference) for a given lock
+    /// @dev Returns 0,0 if the LP token doesn't support index-based fee tracking
+    /// @param lockId The ID of the lock
+    /// @return token0 The address of token0 in the LP
+    /// @return totalAmount0 The total amount of token0 that has accumulated since last update
+    /// @return token1 The address of token1 in the LP
+    /// @return totalAmount1 The total amount of token1 that has accumulated since last update
+    function getTotalAccumulatedFees(bytes32 lockId)
+        external
+        view
+        returns (address token0, uint256 totalAmount0, address token1, uint256 totalAmount1)
+    {
+        Lock memory lock = locks[lockId];
+        if (!lock.isLiquidityLocked) {
+            revert LPNotLocked();
+        }
+
+        IAerodromePool pool = IAerodromePool(tokenContract);
+        
+        // Try to get token addresses (these should always work for any LP)
+        try pool.token0() returns (address _token0) {
+            token0 = _token0;
+        } catch {
+            token0 = address(0);
+        }
+        
+        try pool.token1() returns (address _token1) {
+            token1 = _token1;
+        } catch {
+            token1 = address(0);
+        }
+        
+        // Try to calculate index-based fees, return 0,0 if not supported
+        try this._calculateIndexBasedFeesView(pool) returns (uint256 amount0, uint256 amount1) {
+            totalAmount0 = amount0;
+            totalAmount1 = amount1;
+        } catch {
+            // LP doesn't support index-based fees, return 0
+            totalAmount0 = 0;
+            totalAmount1 = 0;
+        }
+        
+        return (token0, totalAmount0, token1, totalAmount1);
+    }
+
+    /// @notice External view function to calculate index-based fees (for try-catch)
+    /// @dev This needs to be external to be called with try-catch
+    function _calculateIndexBasedFeesView(IAerodromePool pool) external view returns (uint256 totalAmount0, uint256 totalAmount1) {
+        uint256 userBalance = IERC20(tokenContract).balanceOf(address(this));
+        uint256 totalSupply = IERC20(tokenContract).totalSupply();
+        
+        if (userBalance > 0 && totalSupply > 0) {
+            uint256 currentIndex0 = pool.index0();
+            uint256 currentIndex1 = pool.index1();
+            uint256 userSupplyIndex0 = pool.supplyIndex0(address(this));
+            uint256 userSupplyIndex1 = pool.supplyIndex1(address(this));
+            
+            uint256 index0Diff = currentIndex0 > userSupplyIndex0 ? currentIndex0 - userSupplyIndex0 : 0;
+            uint256 index1Diff = currentIndex1 > userSupplyIndex1 ? currentIndex1 - userSupplyIndex1 : 0;
+            
+            totalAmount0 = (index0Diff * userBalance) / 1e18;
+            totalAmount1 = (index1Diff * userBalance) / 1e18;
+        }
+        
+        return (totalAmount0, totalAmount1);
+    }
+
     // ----------- STATE-CHANGING FUNCTIONS -----------
 
     /// @inheritdoc ILPLocker
@@ -194,6 +261,16 @@ contract LPLocker is ILPLocker, Ownable2Step {
         }
 
         IAerodromePool pool = IAerodromePool(tokenContract);
+        
+        // First, try to update fee tracking by making a 0-transfer to ourselves
+        // This triggers _updateFor() in real Aerodrome contracts
+        try pool.transfer(address(this), 0) {
+            // Update successful
+        } catch {
+            // Not an Aerodrome LP or transfer failed, continue anyway
+        }
+        
+        // Then claim the fees
         (uint256 amount0, uint256 amount1) = pool.claimFees();
         address token0 = pool.token0();
         address token1 = pool.token1();
@@ -206,6 +283,26 @@ contract LPLocker is ILPLocker, Ownable2Step {
             IERC20(token1).safeTransfer(feeReceiver, bal1);
         }
         emit FeesClaimed(lockId, token0, amount0, token1, amount1);
+    }
+
+    /// @inheritdoc ILPLocker
+    function updateClaimableFees(bytes32 lockId) external {
+        _requireIsOwner();
+        Lock memory lock = locks[lockId];
+        if (!lock.isLiquidityLocked) {
+            revert LPNotLocked();
+        }
+        
+        IAerodromePool pool = IAerodromePool(tokenContract);
+        
+        // Try to trigger fee update by making a 0-transfer to ourselves
+        // This calls _updateFor() internally in real Aerodrome contracts
+        try pool.transfer(address(this), 0) {
+            emit ClaimableFeesUpdated(lockId);
+        } catch {
+            // Not an Aerodrome LP or function not available
+            revert UpdateNotSupported();
+        }
     }
 
     /// @inheritdoc ILPLocker

@@ -2,14 +2,14 @@ import React from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useChainId } from "wagmi";
 import { getContractAddress, BASE_MAINNET, ANVIL_LOCAL } from "./config";
+import { AppProvider } from "./context/AppContext";
 import AllLocksPanel from "./components/AllLocksPanel";
 import LPBalancePanel from "./components/LPBalancePanel";
 import ClaimableFeesPanel from "./components/ClaimableFeesPanel";
 import DepositPanel from "./components/DepositPanel";
-import WithdrawalPanel from "./components/WithdrawalPanel";
 import EmergencyRecoveryPanel from "./components/EmergencyRecoveryPanel";
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
     const chainId = useChainId();
 
     const getNetworkInfo = () => {
@@ -63,35 +63,31 @@ const App: React.FC = () => {
                     </div>
 
                     {/* Grid Layout */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-                        {/* Main locks display - spans full width on smaller screens */}
-                        <div className="lg:col-span-2 xl:col-span-2">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        {/* Left Column - Main Actions */}
+                        <div className="lg:col-span-2 space-y-6">
+                            <LPBalancePanel />
+                            <DepositPanel />
                             <AllLocksPanel />
                         </div>
 
-                        {/* Side panels */}
-                        <div className="space-y-6">
-                            <LPBalancePanel />
-                            <DepositPanel />
-                        </div>
-
-                        {/* Withdrawal and Fee claiming - spans multiple columns */}
-                        <div className="lg:col-span-2 xl:col-span-2">
-                            <WithdrawalPanel />
-                        </div>
-
+                        {/* Right Column - Management & Info */}
                         <div className="space-y-6">
                             <ClaimableFeesPanel />
-                        </div>
-
-                        {/* Emergency Recovery - spans full width */}
-                        <div className="lg:col-span-2 xl:col-span-3">
                             <EmergencyRecoveryPanel />
                         </div>
                     </div>
                 </div>
             </main>
         </div>
+    );
+};
+
+const App: React.FC = () => {
+    return (
+        <AppProvider>
+            <AppContent />
+        </AppProvider>
     );
 };
 

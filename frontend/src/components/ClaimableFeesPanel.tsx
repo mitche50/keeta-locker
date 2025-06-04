@@ -1,9 +1,10 @@
 import React, { useState } from "react";
-import { useWriteContract, useWaitForTransactionReceipt, useAccount } from "wagmi";
+import { formatEther } from "viem";
+import { useAccount, useChainId, useWriteContract, useWaitForTransactionReceipt, useReadContract } from "wagmi";
 import { useLPLocker } from "../hooks/useLPLocker";
+import { useAppContext } from "../context/AppContext";
 import LPLockerABI from "../abi/LPLocker.json";
 import { getContractAddress } from "../config";
-import { useChainId } from "wagmi";
 import toast from "react-hot-toast";
 import ErrorDisplay from "./ErrorDisplay";
 
@@ -14,178 +15,327 @@ function shorten(addr: string) {
 const ClaimableFeesPanel: React.FC = () => {
     const { address, isConnected } = useAccount();
     const chainId = useChainId();
-    const { claimableFees, lockInfo } = useLPLocker();
-
+    const { allLockIds, owner } = useLPLocker();
+    const { refreshFees, feesRefreshKey, refreshBalances } = useAppContext();
+    const [selectedLockId, setSelectedLockId] = useState<string>("");
+    const [isUpdating, setIsUpdating] = useState(false);
     const [isClaiming, setIsClaiming] = useState(false);
-    const [claimHash, setClaimHash] = useState<`0x${string}` | undefined>();
 
     const lpLockerAddress = getContractAddress(chainId, 'lpLocker') as `0x${string}`;
+    const {
+        writeContract,
+        data: hash,
+        error,
+        isPending,
+    } = useWriteContract();
 
-    // Write contract hook
-    const { writeContract: claimFees } = useWriteContract();
+    const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
-    // Wait for claim transaction
-    const { isLoading: isClaimLoading, isSuccess: isClaimSuccess } = useWaitForTransactionReceipt({
-        hash: claimHash,
+    const lockIds = (allLockIds.data as string[]) || [];
+    const firstLockId = lockIds[0] || "";
+    const isOwner = address && owner?.data && address.toLowerCase() === (owner.data as string).toLowerCase();
+
+    // Auto-select first lock if none selected
+    React.useEffect(() => {
+        if (lockIds.length > 0 && !selectedLockId) {
+            setSelectedLockId(lockIds[0]);
+        }
+    }, [lockIds, selectedLockId]);
+
+    // Get claimable fees for selected lock - refresh based on feesRefreshKey
+    const { data: claimableFeesData, refetch: refetchClaimableFees, isLoading: claimableFeesLoading, isError: claimableFeesError, error: claimableFeesErrorMsg } = useReadContract({
+        address: lpLockerAddress,
+        abi: LPLockerABI,
+        functionName: "getClaimableFees",
+        args: [selectedLockId],
+        query: {
+            enabled: !!selectedLockId && !!lpLockerAddress,
+            refetchInterval: 3000,
+        }
     });
 
-    // Check if user is owner
-    const lockData = Array.isArray(lockInfo.data) ? lockInfo.data : [];
-    const [owner] = lockData;
-    const isOwner = address && owner && address.toLowerCase() === owner.toLowerCase();
-
-    const handleClaimFees = async () => {
-        if (!isOwner) {
-            toast.error("Only the owner can claim fees");
-            return;
+    // Get total accumulated fees for selected lock - refresh based on feesRefreshKey
+    const { data: totalFeesData, refetch: refetchTotalFees, isLoading: totalFeesLoading, isError: totalFeesError, error: totalFeesErrorMsg } = useReadContract({
+        address: lpLockerAddress,
+        abi: LPLockerABI,
+        functionName: "getTotalAccumulatedFees",
+        args: [selectedLockId],
+        query: {
+            enabled: !!selectedLockId && !!lpLockerAddress,
+            refetchInterval: 3000,
         }
+    });
 
-        try {
-            setIsClaiming(true);
-            toast.loading("Claiming fees...", { id: "claim-fees" });
-
-            claimFees({
-                address: lpLockerAddress,
-                abi: LPLockerABI,
-                functionName: "claimFees",
-                args: [],
-            }, {
-                onSuccess: (hash) => {
-                    setClaimHash(hash);
-                    toast.dismiss("claim-fees");
-                    toast.success("Claim transaction submitted!");
-                },
-                onError: (error) => {
-                    console.error("Claim fees error:", error);
-                    setIsClaiming(false);
-                    toast.dismiss("claim-fees");
-                    toast.error("Failed to claim fees");
-                }
-            });
-        } catch (error) {
-            console.error("Claim fees error:", error);
-            setIsClaiming(false);
-            toast.dismiss("claim-fees");
-            toast.error("Failed to claim fees");
+    // Force refresh when feesRefreshKey changes
+    React.useEffect(() => {
+        if (feesRefreshKey > 0 && selectedLockId) {
+            refetchClaimableFees();
+            refetchTotalFees();
         }
-    };
+    }, [feesRefreshKey, selectedLockId, refetchClaimableFees, refetchTotalFees]);
 
     // Handle transaction success
     React.useEffect(() => {
-        if (isClaimSuccess) {
+        if (isSuccess) {
+            toast.dismiss();
+            if (isUpdating) {
+                toast.success("Fees updated successfully!");
+            } else if (isClaiming) {
+                toast.success("Fees claimed successfully!");
+                refreshBalances(); // Refresh balances when fees are claimed
+            }
+            // Always refresh fees after any operation
+            refreshFees();
+            setIsUpdating(false);
             setIsClaiming(false);
-            toast.success("Fees claimed successfully!");
         }
-    }, [isClaimSuccess]);
+    }, [isSuccess, isUpdating, isClaiming, refreshFees, refreshBalances]);
 
-    if (claimableFees.isLoading) {
+    const handleUpdateFees = async () => {
+        if (!selectedLockId) return;
+        try {
+            setIsUpdating(true);
+            toast.loading("Updating fees...", { id: "update" });
+            await writeContract({
+                address: lpLockerAddress,
+                abi: LPLockerABI,
+                functionName: "updateClaimableFees",
+                args: [selectedLockId],
+            });
+        } catch (error) {
+            console.error("Update fees error:", error);
+            toast.dismiss("update");
+            toast.error("Failed to update fees");
+            setIsUpdating(false);
+        }
+    };
+
+    const handleClaimFees = async () => {
+        if (!selectedLockId) return;
+        try {
+            setIsClaiming(true);
+            toast.loading("Claiming fees...", { id: "claim" });
+            await writeContract({
+                address: lpLockerAddress,
+                abi: LPLockerABI,
+                functionName: "claimLPFees",
+                args: [selectedLockId],
+            });
+        } catch (error) {
+            console.error("Claim fees error:", error);
+            toast.dismiss("claim");
+            toast.error("Failed to claim fees");
+            setIsClaiming(false);
+        }
+    };
+
+    const handleRefreshFees = () => {
+        if (selectedLockId) {
+            refetchClaimableFees();
+            refetchTotalFees();
+            toast.success("Refreshed fee data!");
+        }
+    };
+
+    if (allLockIds.isLoading || claimableFeesLoading || totalFeesLoading) {
         return (
             <div className="bg-[#2a2a2f] rounded-xl border border-[#3a3a3f] p-6 animate-pulse">
                 <div className="h-6 w-32 bg-[#3a3a3f] rounded mb-4" />
                 <div className="space-y-3">
-                    {[...Array(2)].map((_, i) => (
-                        <div key={i} className="h-4 w-full bg-[#3a3a3f] rounded" />
-                    ))}
+                    <div className="h-4 w-full bg-[#3a3a3f] rounded" />
+                    <div className="h-4 w-3/4 bg-[#3a3a3f] rounded" />
                 </div>
             </div>
         );
     }
 
-    if (claimableFees.isError) {
+    if (allLockIds.isError) {
         return (
             <ErrorDisplay
-                error={claimableFees.error as Error & { code?: string }}
-                title="Error loading claimable fees"
-                onRetry={() => window.location.reload()}
+                error={allLockIds.error as Error & { code?: string }}
+                title="Error loading locks"
+                onRetry={() => allLockIds.refetch()}
             />
         );
     }
 
-    const data = Array.isArray(claimableFees.data) ? claimableFees.data : [];
-    const [token0, amount0, token1, amount1] = data;
+    const feesData = claimableFeesData as [string, bigint, string, bigint] | undefined;
+    const [token0, amount0, token1, amount1] = feesData || ["", BigInt(0), "", BigInt(0)];
+    const hasClaimableFees = amount0 > 0 || amount1 > 0;
 
-    const hasToken0 = token0 && amount0 && amount0.toString() !== "0";
-    const hasToken1 = token1 && amount1 && amount1.toString() !== "0";
-    const hasAnyFees = hasToken0 || hasToken1;
+    const totalFees = totalFeesData as [string, bigint, string, bigint] | undefined;
+    const [totalToken0, totalAmount0, totalToken1, totalAmount1] = totalFees || ["", BigInt(0), "", BigInt(0)];
+    const hasTotalFees = totalAmount0 > 0 || totalAmount1 > 0;
+
+    const totalLocks = lockIds.length;
 
     return (
         <div className="bg-[#2a2a2f] rounded-xl border border-[#3a3a3f] p-6">
-            <h2 className="text-xl font-semibold mb-6 text-salmon">Claimable Fees</h2>
+            <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-salmon">Claimable Fees</h2>
+                <div className="flex gap-2">
+                    <button
+                        onClick={handleRefreshFees}
+                        className="text-xs text-gray-3 hover:text-salmon transition-colors px-2 py-1 bg-[#23232a] rounded"
+                    >
+                        🔄 Refresh
+                    </button>
+                </div>
+            </div>
 
-            {!hasAnyFees ? (
-                <div className="flex items-center justify-center py-8 text-gray-3">
-                    <div className="text-center">
-                        <div className="text-2xl mb-2">💸</div>
-                        <div className="font-medium">No fees available</div>
-                        <div className="text-sm">Fees will appear here when earned</div>
+            {totalLocks === 0 ? (
+                <div className="text-center py-8 text-gray-4">
+                    <div className="text-4xl mb-2">💰</div>
+                    <div className="text-sm">No locks available</div>
+                    <div className="text-xs text-gray-5 mt-1">
+                        Create a lock to start earning fees
                     </div>
                 </div>
             ) : (
                 <div className="space-y-4">
-                    {/* Token 0 */}
-                    <div className="bg-[#23232a] rounded-lg p-4 border border-[#3a3a3f]">
-                        <div className="flex justify-between items-center mb-2">
-                            <span className="text-sm font-medium text-gray-3">Token 0</span>
-                            <span className={`px-2 py-1 rounded text-xs font-medium ${hasToken0 ? "bg-green/10 text-green" : "bg-gray-4/10 text-gray-3"
-                                }`}>
-                                {hasToken0 ? "Available" : "None"}
-                            </span>
+                    {/* Lock Selection */}
+                    {totalLocks > 1 && (
+                        <div>
+                            <label className="block text-xs text-gray-3 mb-2">Select Lock to View Fees</label>
+                            <select
+                                value={selectedLockId}
+                                onChange={(e) => setSelectedLockId(e.target.value)}
+                                className="w-full bg-[#23232a] border border-[#3a3a3f] rounded px-3 py-2 text-sm text-gray-1"
+                            >
+                                {lockIds.map((lockId, index) => (
+                                    <option key={lockId} value={lockId}>
+                                        Lock #{index + 1} - {shorten(lockId)}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
-                        <div className="flex justify-between items-center">
-                            <span className="text-gray-1 font-mono text-sm" title={token0}>
-                                {shorten(token0 || "")}
-                            </span>
-                            <span className="text-gray-1 font-mono font-bold">
-                                {amount0?.toString?.() ?? "0"}
-                            </span>
-                        </div>
-                    </div>
-
-                    {/* Token 1 */}
-                    <div className="bg-[#23232a] rounded-lg p-4 border border-[#3a3a3f]">
-                        <div className="flex justify-between items-center mb-2">
-                            <span className="text-sm font-medium text-gray-3">Token 1</span>
-                            <span className={`px-2 py-1 rounded text-xs font-medium ${hasToken1 ? "bg-green/10 text-green" : "bg-gray-4/10 text-gray-3"
-                                }`}>
-                                {hasToken1 ? "Available" : "None"}
-                            </span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                            <span className="text-gray-1 font-mono text-sm" title={token1}>
-                                {shorten(token1 || "")}
-                            </span>
-                            <span className="text-gray-1 font-mono font-bold">
-                                {amount1?.toString?.() ?? "0"}
-                            </span>
-                        </div>
-                    </div>
-
-                    {/* Claim Button */}
-                    {isConnected && isOwner && (
-                        <button
-                            onClick={handleClaimFees}
-                            disabled={isClaiming || isClaimLoading}
-                            className="w-full bg-green/10 hover:bg-green/20 border border-green/20 text-green font-medium py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {isClaiming || isClaimLoading ? (
-                                <span className="flex items-center justify-center gap-2">
-                                    <div className="w-4 h-4 border-2 border-green/30 border-t-green rounded-full animate-spin" />
-                                    Claiming Fees...
-                                </span>
-                            ) : (
-                                "💰 Claim Fees"
-                            )}
-                        </button>
                     )}
 
-                    {/* Access message for non-owners */}
-                    {isConnected && !isOwner && (
-                        <div className="bg-blue/10 border border-blue/20 rounded-lg p-3">
-                            <div className="text-sm text-blue">
-                                🔒 Only the contract owner can claim fees
+                    {/* Current Lock Info */}
+                    <div className="bg-[#23232a] rounded-lg p-4">
+                        <div className="text-xs text-gray-4 mb-2">
+                            {totalLocks === 1 ? "Lock ID" : "Selected Lock"}
+                        </div>
+                        <div className="font-mono text-sm text-gray-1 mb-3">
+                            {shorten(selectedLockId)}
+                        </div>
+
+                        {/* Fee Details */}
+                        {claimableFeesError ? (
+                            <div className="text-red-400 text-sm">
+                                Error loading fees: {claimableFeesErrorMsg?.message || "Unknown error"}
                             </div>
-                        </div>
-                    )}
+                        ) : (
+                            <div className="space-y-4">
+                                {/* Claimable Fees */}
+                                <div>
+                                    <div className="text-xs text-gray-4 mb-2">💰 Claimable Now</div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="bg-[#1a1a1f] rounded p-3">
+                                            <div className="text-xs text-gray-4 mb-1">Token 0</div>
+                                            <div className="font-mono text-xs text-gray-3 mb-2">
+                                                {token0 ? shorten(token0) : "Loading..."}
+                                            </div>
+                                            <div className={`font-mono text-sm ${amount0 > 0 ? 'text-green-400' : 'text-gray-4'}`}>
+                                                {amount0 > 0 ? formatEther(amount0) : "0.0"}
+                                            </div>
+                                        </div>
+                                        <div className="bg-[#1a1a1f] rounded p-3">
+                                            <div className="text-xs text-gray-4 mb-1">Token 1</div>
+                                            <div className="font-mono text-xs text-gray-3 mb-2">
+                                                {token1 ? shorten(token1) : "Loading..."}
+                                            </div>
+                                            <div className={`font-mono text-sm ${amount1 > 0 ? 'text-green-400' : 'text-gray-4'}`}>
+                                                {amount1 > 0 ? formatEther(amount1) : "0.0"}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Total Accumulated Fees */}
+                                <div>
+                                    <div className="text-xs text-gray-4 mb-2">📊 Total Accumulated (Index-based)</div>
+                                    {totalFeesError ? (
+                                        <div className="text-red-400 text-sm">
+                                            Error loading total fees: {totalFeesErrorMsg?.message || "Unknown error"}
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="bg-[#1a1a1f] rounded p-3 border border-blue-500/20">
+                                                <div className="text-xs text-gray-4 mb-1">Token 0</div>
+                                                <div className="font-mono text-xs text-gray-3 mb-2">
+                                                    {totalToken0 ? shorten(totalToken0) : "Loading..."}
+                                                </div>
+                                                <div className={`font-mono text-sm ${totalAmount0 > 0 ? 'text-blue-400' : 'text-gray-4'}`}>
+                                                    {totalAmount0 > 0 ? formatEther(totalAmount0) : "0.0"}
+                                                </div>
+                                            </div>
+                                            <div className="bg-[#1a1a1f] rounded p-3 border border-blue-500/20">
+                                                <div className="text-xs text-gray-4 mb-1">Token 1</div>
+                                                <div className="font-mono text-xs text-gray-3 mb-2">
+                                                    {totalToken1 ? shorten(totalToken1) : "Loading..."}
+                                                </div>
+                                                <div className={`font-mono text-sm ${totalAmount1 > 0 ? 'text-blue-400' : 'text-gray-4'}`}>
+                                                    {totalAmount1 > 0 ? formatEther(totalAmount1) : "0.0"}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Action Buttons */}
+                                {isOwner ? (
+                                    <div className="space-y-2">
+                                        <button
+                                            onClick={handleUpdateFees}
+                                            disabled={isPending || isConfirming}
+                                            className={`w-full py-2 px-4 rounded text-sm font-medium transition-colors ${!isPending && !isConfirming
+                                                ? "bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400"
+                                                : "bg-gray-500/10 border border-gray-500/20 text-gray-500 cursor-not-allowed"
+                                                }`}
+                                        >
+                                            {isPending || isConfirming
+                                                ? "Processing..."
+                                                : "🔄 Update Claimable Fees"}
+                                        </button>
+                                        <button
+                                            onClick={handleClaimFees}
+                                            disabled={!hasClaimableFees || isPending || isConfirming}
+                                            className={`w-full py-2 px-4 rounded text-sm font-medium transition-colors ${hasClaimableFees && !isPending && !isConfirming
+                                                ? "bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 text-green-400"
+                                                : "bg-gray-500/10 border border-gray-500/20 text-gray-500 cursor-not-allowed"
+                                                }`}
+                                        >
+                                            {isPending || isConfirming
+                                                ? "Processing..."
+                                                : hasClaimableFees
+                                                    ? "💰 Claim Fees"
+                                                    : "No Fees Available"}
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-2 text-gray-4 text-sm">
+                                        Only the contract owner can claim fees
+                                    </div>
+                                )}
+
+                                {/* Info */}
+                                <div className="bg-blue-500/10 border border-blue-500/20 rounded p-3">
+                                    <div className="text-xs text-blue-400 mb-1">ℹ️ About LP Fees</div>
+                                    <div className="text-xs text-blue-300">
+                                        Aerodrome LP tokens earn trading fees from the pool. Fees accumulate over time and can be claimed by the contract owner.
+                                        {totalLocks > 1 && " Use the dropdown above to view fees for different locks."}
+                                        <br /><br />
+                                        <strong>🔄 Update Claimable Fees:</strong> Syncs your fee tracking with the pool to show the latest claimable amounts.
+                                        <br />
+                                        <strong>💰 Claimable Now:</strong> Fees that can be claimed immediately from the pool.
+                                        <br />
+                                        <strong>📊 Total Accumulated:</strong> Index-based calculation showing total fees accumulated since last update (including claimable).
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
         </div>

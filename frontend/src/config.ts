@@ -8,7 +8,7 @@ export const BASE_MAINNET = {
         decimals: 18,
     },
     rpcUrls: {
-        default: { http: ["https://mainnet.base.org"] },
+        default: { http: ["https://base-mainnet.g.alchemy.com/v2/hzKSKo013wwojLuqnLkbPUWsazP3CUB-"] },
         public: { http: ["https://mainnet.base.org"] },
     },
     blockExplorers: {
@@ -39,12 +39,12 @@ export const ANVIL_LOCAL = {
 // Contract addresses by chain ID
 export const CONTRACT_ADDRESSES = {
     [BASE_MAINNET.id]: {
-        lpLocker: "0xYourLockerAddressHere", // TODO: Replace with deployed Base address
-        lpToken: "0xYourLPTokenAddressHere", // TODO: Replace with actual Aerodrome LP token
+        lpLocker: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512", // TODO: Replace with deployed Base address
+        lpToken: "0x5FbDB2315678afecb367f032d93F642f64180aa3", // TODO: Replace with actual Aerodrome LP token
     },
     [ANVIL_LOCAL.id]: {
-        lpLocker: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512", // Deployed LPLocker address
-        lpToken: "0x5FbDB2315678afecb367f032d93F642f64180aa3", // Deployed MockERC20 address
+        lpLocker: "0x09635F643e140090A9A8Dcd712eD6285858ceBef", // Newly deployed LPLocker with updateClaimableFees
+        lpToken: "0xa85233C63b9Ee964Add6F2cffe00Fd84eb32338f", // Newly deployed MockAerodromeLP address
     },
 };
 

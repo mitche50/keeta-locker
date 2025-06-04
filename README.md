@@ -12,11 +12,28 @@ A comprehensive smart contract system and admin dashboard for locking Aerodrome 
 ## 📋 Features
 
 ### Smart Contract Features
-- ✅ Lock LP tokens with configurable time periods
-- ✅ Trigger withdrawal with time delay mechanism
-- ✅ Cancel withdrawal before unlock time
-- ✅ Partial and full withdrawals
-- ✅ Fee collection from LP positions
+- ✅ **Multiple Lock Support**: Create unlimited independent locks with unique IDs
+- ✅ **Lock Management**: Lock LP tokens with configurable amounts per lock
+- ✅ **Time-based Withdrawal**: 30-day delay after triggering withdrawal
+- ✅ **Flexible Withdrawals**: Cancel withdrawal before unlock time, partial/full withdrawals
+- ✅ **Advanced Fee Collection**: Two types of fee tracking from Aerodrome LP positions
+  - 🔹 **Claimable Fees**: Direct fees ready to claim immediately
+  - 🔹 **Accumulated Fees**: Index-based total fees accumulated since last update
+- ✅ **Fee Management**: Manual fee updates and automatic update-before-claim
+- ✅ **Lock Enumeration**: Get all lock IDs and individual lock information
+- ✅ **Top-up Support**: Add more LP tokens to existing unlocked positions
+- ✅ **Emergency Recovery**: Recover accidentally sent non-LP tokens
+- ✅ **Ownership Management**: Transfer ownership with 2-step confirmation
+
+### Frontend Features
+- 🎨 **Modern Dashboard**: Clean, responsive interface with dark theme
+- 📊 **Real-time Data**: Live updates of lock status, fees, and blockchain time
+- 🔗 **Multi-Network**: Supports Base mainnet and local Anvil development
+- 💰 **Fee Tracking**: Dual display of claimable and accumulated fees
+- 🔄 **Live Updates**: Automatic refresh every 2-5 seconds for current data
+- 🎯 **Smart Time Handling**: Uses blockchain timestamps instead of client time
+- 📱 **Wallet Integration**: RainbowKit with MetaMask, WalletConnect support
+- ⚡ **Optimistic Updates**: Immediate UI feedback with transaction confirmations
 
 ## 🚀 Quick Start
 
@@ -395,7 +412,10 @@ export const CONTRACT_ADDRESSES = {
         lpLocker: "0xYourDeployedLockerAddress",
         lpToken: "0xYourAerodromeLPTokenAddress",
     },
-    // ... other networks
+    [ANVIL_LOCAL.id]: {
+        lpLocker: "0x09635F643e140090A9A8Dcd712eD6285858ceBef",
+        lpToken: "0xa85233C63b9Ee964Add6F2cffe00Fd84eb32338f",
+    },
 };
 ```
 
@@ -481,8 +501,8 @@ export const CONTRACT_ADDRESSES = {
         lpToken: "0xYourLPTokenAddress",
     },
     [ANVIL_LOCAL.id]: {
-        lpLocker: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
-        lpToken: "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+        lpLocker: "0x09635F643e140090A9A8Dcd712eD6285858ceBef",
+        lpToken: "0xa85233C63b9Ee964Add6F2cffe00Fd84eb32338f",
     },
 };
 ```
@@ -533,13 +553,20 @@ bun run lint
 keeta-timelock/
 ├── blockchain/             # Smart contract development
 │   ├── src/               # Smart contracts
-│   │   ├── LPLocker.sol   # Main locker contract
+│   │   ├── LPLocker.sol   # Main locker contract (multi-lock support)
 │   │   ├── Create2Factory.sol # CREATE2 deployment factory
+│   │   ├── mocks/         # Mock contracts for testing
+│   │   │   └── MockAerodromeLP.sol # Aerodrome LP mock with fee simulation
 │   │   └── interfaces/    # Contract interfaces
-│   ├── test/              # Smart contract tests
+│   │       ├── ILPLocker.sol      # Main contract interface
+│   │       ├── IAerodromePool.sol # Aerodrome pool interface
+│   │       └── IERC20.sol         # ERC20 token interface
+│   ├── test/              # Comprehensive smart contract tests
+│   │   ├── LPLocker.t.sol # Core functionality tests
+│   │   └── LPLockerGas.t.sol # Gas optimization tests
 │   ├── script/            # Deployment and utility scripts
 │   │   ├── Deploy.s.sol   # Standard deployment
-│   │   ├── DeployCreate2.s.sol # CREATE2 deployment
+│   │   ├── DeployCreate2.s.sol # CREATE2 vanity address deployment
 │   │   └── generate-vanity.sh # Vanity address generator
 │   ├── lib/               # Foundry dependencies
 │   ├── .env               # Environment variables
@@ -549,11 +576,17 @@ keeta-timelock/
 ├── frontend/              # React frontend application
 │   ├── src/
 │   │   ├── components/    # React components
-│   │   │   ├── LockInfoPanel.tsx
-│   │   │   ├── DepositPanel.tsx
-│   │   │   ├── WithdrawalPanel.tsx
-│   │   │   └── ...
+│   │   │   ├── AllLocksPanel.tsx      # Multi-lock management
+│   │   │   ├── LockInfoPanel.tsx      # Individual lock details
+│   │   │   ├── DepositPanel.tsx       # Create new locks
+│   │   │   ├── ClaimableFeesPanel.tsx # Fee management & claiming
+│   │   │   ├── EmergencyRecoveryPanel.tsx # Token recovery
+│   │   │   ├── LPBalancePanel.tsx     # Contract balance display
+│   │   │   └── ErrorDisplay.tsx       # Error handling component
 │   │   ├── hooks/         # Custom React hooks
+│   │   │   └── useLPLocker.ts # Contract interaction hook
+│   │   ├── abi/           # Contract ABIs
+│   │   │   └── LPLocker.json # Auto-generated contract ABI
 │   │   ├── config.ts      # Contract addresses & network config
 │   │   └── main.tsx       # Application entry point
 │   ├── public/            # Static assets
@@ -617,9 +650,73 @@ cd blockchain
 make deploy-anvil
 ```
 
+**"Timelock showing as active after cancelling withdrawal"**
+- Frontend was using client time instead of blockchain time
+- Fixed by using `useBlock` hook to get blockchain timestamps
+- Ensure anvil time is advanced if testing: `cast rpc evm_setNextBlockTimestamp <timestamp> && cast rpc evm_mine`
+
+**"React hooks order error"**
+- Ensure all hooks are called before any conditional returns in components
+- All `useState`, `useEffect`, `useReadContract` calls must be at component top
+- Fixed in `AllLocksPanel.tsx` by moving all hooks before conditional rendering
+
+**"Function not found on ABI"**
+- Contract ABI needs regeneration after function changes
+- Run `forge build` and copy ABI from `out/LPLocker.sol/LPLocker.json`
+- Update `frontend/src/abi/LPLocker.json` with new ABI
+
+**"LP tokens not showing up"**
+- LP tokens are minted to deployer address (first Anvil account)
+- Import test account: `0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80`
+- Or mint to your address using the deployed LP token contract
+
+**"Fees showing as 0 despite activity"**
+- Use "🔄 Update Claimable Fees" button to sync fee tracking
+- Aerodrome pools need `transfer(address(this), 0)` call to update indices
+- Check both "Claimable Now" and "Total Accumulated Fees" sections
+
+### Development Tips
+
+**Anvil Time Management**
+```bash
+# Check current blockchain time
+cast block latest --field timestamp
+
+# Advance time to specific timestamp
+cast rpc evm_setNextBlockTimestamp <timestamp> && cast rpc evm_mine
+
+# Convert human time to timestamp
+date -j -f "%m/%d/%Y %H:%M:%S" "07/03/2025 22:20:37" +%s
+```
+
+**Contract Testing**
+```bash
+# Run specific test
+forge test --match-test testMultipleLocks -vvv
+
+# Test with gas reporting
+forge test --gas-report
+
+# Generate coverage report
+forge coverage --report lcov
+```
+
+**Frontend Development**
+```bash
+# Live reload on contract changes
+cd frontend && bun run dev
+
+# Check TypeScript errors
+bun run build
+
+# Update contract ABI after changes
+cp ../blockchain/out/LPLocker.sol/LPLocker.json src/abi/
+```
+
 ### Getting Help
 
 - 📖 Check the [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions
+- 🔧 See [SMART_CONTRACT_API.md](SMART_CONTRACT_API.md) for complete smart contract function reference
 - 🐛 Open an issue on GitHub for bugs
 - 💡 Start a discussion for feature requests
 - 📧 Contact the team for security concerns

@@ -10,21 +10,22 @@ import "@rainbow-me/rainbowkit/styles.css";
 import './index.css';
 
 const config = getDefaultConfig({
-    appName: "LPLocker Admin",
-    projectId: "lp-locker-admin",
+    appName: "LP Locker",
+    projectId: "YOUR_PROJECT_ID",
     chains: [BASE_MAINNET, ANVIL_LOCAL],
     transports: {
         [BASE_MAINNET.id]: http(),
         [ANVIL_LOCAL.id]: http(),
     },
+    ssr: false, // If your dApp uses server side rendering (SSR)
 });
 
 const queryClient = new QueryClient();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
     <React.StrictMode>
-        <QueryClientProvider client={queryClient}>
-            <WagmiProvider config={config}>
+        <WagmiProvider config={config}>
+            <QueryClientProvider client={queryClient}>
                 <RainbowKitProvider>
                     <App />
                     <Toaster
@@ -33,25 +34,25 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                             duration: 4000,
                             style: {
                                 background: '#2a2a2f',
-                                color: '#f8f9fa',
+                                color: '#e4e4e7',
                                 border: '1px solid #3a3a3f',
                             },
                             success: {
-                                iconTheme: {
-                                    primary: '#00d4aa',
-                                    secondary: '#2a2a2f',
+                                style: {
+                                    background: '#059669',
+                                    color: 'white',
                                 },
                             },
                             error: {
-                                iconTheme: {
-                                    primary: '#ff4757',
-                                    secondary: '#2a2a2f',
+                                style: {
+                                    background: '#dc2626',
+                                    color: 'white',
                                 },
                             },
                         }}
                     />
                 </RainbowKitProvider>
-            </WagmiProvider>
-        </QueryClientProvider>
+            </QueryClientProvider>
+        </WagmiProvider>
     </React.StrictMode>
 ); 
