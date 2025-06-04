@@ -74,6 +74,57 @@ contract LPLockerForkSablierTest is Test {
         vm.stopPrank();
     }
 
+    function testEndToEndForkedNetwork() public {
+        vm.startPrank(BENEFICIARY);
+
+        // Withdraw all LP from Sablier
+        uint256 balBefore = IERC20(LP).balanceOf(BENEFICIARY);
+        ISablierNFT(SABLIER).withdrawMax(TOKEN_ID, BENEFICIARY);
+        uint256 balAfter = IERC20(LP).balanceOf(BENEFICIARY);
+        uint256 withdrawn = balAfter - balBefore;
+        assertGt(withdrawn, 0, "No LP withdrawn from Sablier");
+
+        // Approve and lock in LPLocker
+        IERC20(LP).approve(address(locker), withdrawn);
+        bytes32 lockId = locker.lockLiquidity(withdrawn);
+
+        // Assert LPLocker state    
+        (address owner_, address feeReceiver_, address tokenContract_, uint256 lockedAmount_, uint256 lockUpEndTime_, bool isLiquidityLocked_, bool isWithdrawalTriggered_) = locker.getLockInfo(lockId);
+        assertEq(owner_, BENEFICIARY);
+        assertEq(feeReceiver_, FEE_RECEIVER);
+        assertEq(tokenContract_, address(LP));
+        assertEq(lockedAmount_, withdrawn);
+        assertEq(lockUpEndTime_, 0);
+        assertEq(isLiquidityLocked_, true);
+        assertEq(isWithdrawalTriggered_, false);
+        assertEq(IERC20(LP).balanceOf(address(locker)), withdrawn);
+        assertEq(locker.getUnlockTime(lockId), 0);
+
+        // Trigger withdrawal
+        locker.triggerWithdrawal(lockId);
+
+        // Assert LPLocker state
+        (owner_, feeReceiver_, tokenContract_, lockedAmount_, lockUpEndTime_, isLiquidityLocked_, isWithdrawalTriggered_) = locker.getLockInfo(lockId);
+        assertEq(owner_, BENEFICIARY);
+        assertEq(feeReceiver_, FEE_RECEIVER);
+        assertEq(tokenContract_, address(LP));
+        assertEq(lockedAmount_, withdrawn);
+        assertGt(lockUpEndTime_, 0);
+        assertEq(isLiquidityLocked_, true);
+        assertEq(isWithdrawalTriggered_, true);
+        assertEq(IERC20(LP).balanceOf(address(locker)), withdrawn);
+
+        vm.warp(locker.getUnlockTime(lockId) + 1);
+
+        // Withdraw LP
+        locker.withdrawLP(lockId, withdrawn);
+
+        // Assert LPLocker state
+        (owner_, feeReceiver_, tokenContract_, lockedAmount_, lockUpEndTime_, isLiquidityLocked_, isWithdrawalTriggered_) = locker.getLockInfo(lockId);
+        assertEq(owner_, BENEFICIARY);
+        assertEq(feeReceiver_, FEE_RECEIVER);
+    }
+
     function testGetStablierStatus() public view {
         uint8 status = ISablierNFT(SABLIER).statusOf(TOKEN_ID);
         console2.log("status", status);

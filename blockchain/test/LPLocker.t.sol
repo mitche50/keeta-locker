@@ -74,6 +74,15 @@ contract LPLockerTest is Test {
         locker.triggerWithdrawal(lockId);
     }
 
+    function testEmitsWithdrawalTriggered() public {
+        bytes32 lockId = _lock();
+        vm.prank(owner);
+        uint256 expectedUnlockTime = block.timestamp + 30 days;
+        vm.expectEmit(true, false, false, true);
+        emit ILPLocker.WithdrawalTriggered(lockId, expectedUnlockTime);
+        locker.triggerWithdrawal(lockId);
+    }
+
     function testCannotTriggerIfNotLocked() public {
         bytes32 nonExistentLockId = keccak256("nonexistent");
         vm.prank(owner);
@@ -85,15 +94,6 @@ contract LPLockerTest is Test {
         bytes32 lockId = _lockAndTrigger();
         vm.prank(owner);
         vm.expectRevert(ILPLocker.WithdrawalAlreadyTriggered.selector);
-        locker.triggerWithdrawal(lockId);
-    }
-
-    function testEmitsWithdrawalTriggered() public {
-        bytes32 lockId = _lock();
-        vm.prank(owner);
-        uint256 expectedUnlockTime = block.timestamp + 30 days;
-        vm.expectEmit(true, false, false, true);
-        emit ILPLocker.WithdrawalTriggered(lockId, expectedUnlockTime);
         locker.triggerWithdrawal(lockId);
     }
 
@@ -292,10 +292,10 @@ contract LPLockerTest is Test {
         locker.changeFeeReceiver(user);
     }
 
-    function testOnlyOwnerCanClaimFees() public {
+    function testAnyoneCanClaimFees() public {
         bytes32 lockId = _lock();
+        // Test that any user can claim fees
         vm.prank(user);
-        vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
         locker.claimLPFees(lockId);
     }
 
@@ -354,9 +354,6 @@ contract LPLockerTest is Test {
         locker.lockLiquidity(LOCK_AMOUNT);
         vm.prank(user);
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
-        locker.triggerWithdrawal(lockId);
-        vm.prank(user);
-        vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
         locker.cancelWithdrawalTrigger(lockId);
         vm.prank(user);
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
@@ -364,9 +361,6 @@ contract LPLockerTest is Test {
         vm.prank(user);
         vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
         locker.changeFeeReceiver(user);
-        vm.prank(user);
-        vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
-        locker.claimLPFees(lockId);
     }
 
     function testGetLockInfoReturnsCorrectState() public {
@@ -648,36 +642,20 @@ contract LPLockerTest is Test {
         assertEq(lpToken.supplyIndex1(address(locker)), 3000);
     }
 
-    function testOnlyOwnerCanUpdateClaimableFees() public {
-        bytes32 lockId = _lock();
-        vm.prank(user);
-        vm.expectRevert(ILPLocker.OnlyOwnerCanCall.selector);
-        locker.updateClaimableFees(lockId);
-    }
-
     function testCannotUpdateFeesIfNotLocked() public {
         bytes32 nonExistentLockId = keccak256("nonexistent");
-        vm.prank(owner);
+        vm.prank(user);
         vm.expectRevert(ILPLocker.LPNotLocked.selector);
         locker.updateClaimableFees(nonExistentLockId);
     }
 
-    function testClaimLPFeesUpdatesBeforeClaiming() public {
+    function testAnyoneCanUpdateClaimableFees() public {
         bytes32 lockId = _lock();
-        
-        // Set up initial state - user has old indices
-        lpToken.setGlobalIndices(2000, 3000);  // New global indices
-        lpToken.setUserIndices(address(locker), 1000, 1500);  // Old user indices
-        lpToken.setTokens(address(token0), address(token1));
-        lpToken.setClaimAmounts(100, 200);
-        
-        // Claim fees - this should update indices first, then claim
-        vm.prank(owner);
-        locker.claimLPFees(lockId);
-        
-        // Verify that user indices were updated during the claim process
-        assertEq(lpToken.supplyIndex0(address(locker)), 2000);
-        assertEq(lpToken.supplyIndex1(address(locker)), 3000);
+        // Test that any user can update claimable fees
+        vm.expectEmit(true, false, false, true);
+        emit ILPLocker.ClaimableFeesUpdated(lockId);
+        vm.prank(user);
+        locker.updateClaimableFees(lockId);
     }
 
     function _lock() internal returns (bytes32 lockId) {

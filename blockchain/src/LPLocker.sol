@@ -10,7 +10,7 @@ import "@openzeppelin/contracts/access/Ownable2Step.sol";
 /**
  * @title LPLocker
  * @notice Locks an ERC20 LP Token, then allows a 30-day withdrawal window after a trigger. Supports Aerodrome LP fee claiming.
- * @dev Only the owner can lock, trigger withdrawal, cancel, withdraw, claim fees, or change owner/fee receiver.
+ * @dev Owner controls all lock operations (creation, triggering withdrawals, cancellation, and withdrawals). Anyone can update fees and claim fees (which go to the designated fee receiver).
  */
 contract LPLocker is ILPLocker, Ownable2Step {
     using SafeERC20 for IERC20;
@@ -254,21 +254,12 @@ contract LPLocker is ILPLocker, Ownable2Step {
 
     /// @inheritdoc ILPLocker
     function claimLPFees(bytes32 lockId) external {
-        _requireIsOwner();
         Lock memory lock = locks[lockId];
         if (!lock.isLiquidityLocked) {
             revert LPNotLocked();
         }
 
         IAerodromePool pool = IAerodromePool(tokenContract);
-        
-        // First, try to update fee tracking by making a 0-transfer to ourselves
-        // This triggers _updateFor() in real Aerodrome contracts
-        try pool.transfer(address(this), 0) {
-            // Update successful
-        } catch {
-            // Not an Aerodrome LP or transfer failed, continue anyway
-        }
         
         // Then claim the fees
         (uint256 amount0, uint256 amount1) = pool.claimFees();
@@ -287,7 +278,6 @@ contract LPLocker is ILPLocker, Ownable2Step {
 
     /// @inheritdoc ILPLocker
     function updateClaimableFees(bytes32 lockId) external {
-        _requireIsOwner();
         Lock memory lock = locks[lockId];
         if (!lock.isLiquidityLocked) {
             revert LPNotLocked();

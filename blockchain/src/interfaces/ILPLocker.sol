@@ -113,7 +113,7 @@ interface ILPLocker {
 
     /**
      * @notice Claims LP fees from the pool and sends them to the fee receiver
-     * @dev Only callable by the owner when liquidity is locked
+     * @dev Can be called by anyone when liquidity is locked. Fees always go to the designated fee receiver.
      * @param lockId The ID of the lock
      * @custom:error LPNotLocked if not locked
      */
@@ -121,7 +121,7 @@ interface ILPLocker {
 
     /**
      * @notice Updates the claimable fees by triggering fee tracking update
-     * @dev Only callable by the owner when liquidity is locked. Triggers _updateFor() in Aerodrome contracts.
+     * @dev Can be called by anyone when liquidity is locked. Triggers _updateFor() in Aerodrome contracts.
      * @param lockId The ID of the lock
      * @custom:error LPNotLocked if not locked, UpdateNotSupported if LP doesn't support updates
      */
